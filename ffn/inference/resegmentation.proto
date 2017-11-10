@@ -1,0 +1,99 @@
+// Protos to store statistics about resegmentation results.
+syntax = "proto2";
+
+import "utils/vector.proto";
+
+package ffn;
+
+message EndpointResegmentationResult {
+  // ID of the original segment from which resegmentation started.
+  optional uint64 id = 1;
+
+  // Center point of the subvolume within which the segmentation
+  // was generated.
+  optional proto.Vector3j start = 2;
+
+  // Stores statistics about the overlap between an original segment and one
+  // created in the current resegmentation run.
+  message OverlapInfo {
+    // Number of overlapping voxels.
+    optional int32 num_overlapping = 1;
+
+    // Number of voxels in the original segment.
+    optional int32 num_original = 2;
+  }
+
+  // Number of voxels created in the resegmentation run.
+  optional int32 num_voxels = 3;
+
+  // Key is a segment ID in the original segmentation.
+  map<uint64, OverlapInfo> overlaps = 4;
+
+  // Information about the overlap with the seeding segment. Stored separately
+  // from the map for easier querying.
+  optional OverlapInfo source = 5;
+
+  // Size of the area around the decision point used for segmentation.
+  optional proto.Vector3j segmentation_radius = 6;
+
+  // Free-form description of the resegmentation experiment.
+  optional string tag = 7;
+}
+
+message PairResegmentationResult {
+  // Decision point.
+  optional proto.Vector3j point = 1;
+
+  // IDs of the two original segments.
+  optional uint64 id_a = 2;
+  optional uint64 id_b = 3;
+
+  // Size of the area around the decision point used for segmentation.
+  optional proto.Vector3j segmentation_radius = 4;
+
+  // Free-form description of the resegmentation experiment.
+  optional string tag = 5;
+
+  // Metrics from a single FFN inference run.
+  message SegmentResult {
+    // Location of the seed for this run in the global coordinate system.
+    optional proto.Vector3j origin = 1;
+
+    // Number of voxels created in this run.
+    optional int32 num_voxels = 2;
+
+    // Fraction of voxels flagged as deleted during inference.
+    optional int32 deleted_voxels = 3;
+
+    // Fraction of voxels of the original segment
+    // reconstructed in the current segmentation run.
+    optional float segment_a_consistency = 4;
+    optional float segment_b_consistency = 5;
+
+    // Max distance from border in the reconstructed segment.
+    optional float max_edt = 6;
+  }
+
+  message EvalResult {
+    // Size of the area around the decision point used for evaluation
+    // of metrics stored in this proto.
+    optional proto.Vector3j radius = 1;
+
+    // The Jaccard index between the two segments.
+    optional float iou = 2;
+
+    optional SegmentResult from_a = 3;
+    optional SegmentResult from_b = 4;
+
+    // Max distance from background in the original segments.
+    optional float max_edt_a = 5;
+    optional float max_edt_b = 6;
+
+    // Number of voxels of the original segment visible within the
+    // resegmentation subvolume.
+    optional int32 num_voxels_a = 7;
+    optional int32 num_voxels_b = 8;
+  }
+
+  optional EvalResult eval = 6;
+}

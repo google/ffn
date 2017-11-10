@@ -1,0 +1,19 @@
+image {
+  hdf5: "third_party/neuroproof_examples/training_sample2/grayscale_maps.h5:raw"
+}
+image_mean: 128
+image_stddev: 33
+checkpoint_interval: 1800
+seed_policy: "PolicyPeaks"
+model_checkpoint_path: "models/fib25/model.ckpt-27465036"
+model_name: "convstack_3d.ConvStack3DFFNModel"
+model_args: "{\"depth\": 12, \"fov_size\": [33, 33, 33], \"deltas\": [8, 8, 8]}"
+segmentation_output_dir: "results/fib25/training2"
+inference_options {
+  init_activation: 0.95
+  pad_value: 0.05
+  move_threshold: 0.9
+  min_boundary_dist { x: 1 y: 1 z: 1}
+  segment_threshold: 0.6
+  min_segment_size: 1000
+}

@@ -1,0 +1,78 @@
+// Copyright 2017 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// Defines protocol messages representing vectors.
+
+syntax = "proto2";
+
+package ffn.proto;
+
+// A vector of two 64-bit floating point numbers.
+message Vector2d {
+  optional double x = 1;  // required
+  optional double y = 2;  // required
+};
+
+// A vector of two 32-bit signed integers.
+message Vector2i {
+  optional int32 x = 1;  // required
+  optional int32 y = 2;  // required
+};
+
+// A vector of three 64-bit floating point numbers.
+message Vector3d {
+  optional double x = 1;  // required
+  optional double y = 2;  // required
+  optional double z = 3;  // required
+};
+
+// A vector of three 32-bit floating point numbers.
+message Vector3f {
+  optional float x = 1;  // required
+  optional float y = 2;  // required
+  optional float z = 3;  // required
+};
+
+// A vector of three 64-bit signed integers. The "j" suffix follows the Java
+// type naming convention, for lack of a more suitable one.
+message Vector3j {
+  optional int64 x = 1;  // required
+  optional int64 y = 2;  // required
+  optional int64 z = 3;  // required
+};
+
+// A list of 2-dimensional 64-bit floating point vectors.
+message Vector2dList {
+  repeated Vector2d vectors = 1;
+};
+
+// A list of 2-dimensional 32-bit integer vectors.
+message Vector2iList {
+  repeated Vector2i vectors = 1;
+};
+
+// A list of 3-dimensional 64-bit floating point vectors.
+message Vector3dList {
+  repeated Vector3d vectors = 1;
+};
+
+// A list of 3-dimensional 32-bit floating point vectors.
+message Vector3fList {
+  repeated Vector3f vectors = 1;
+};
+
+// A list of 3-dimensional 64-bit integer vectors.
+message Vector3jList {
+  repeated Vector3j vectors = 1;
+};

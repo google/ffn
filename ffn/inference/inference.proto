@@ -1,0 +1,335 @@
+// Copyright 2017 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+syntax = "proto2";
+
+package ffn;
+
+import "utils/vector.proto";
+import "utils/bounding_box.proto";
+
+message DecoratedVolume {
+  oneof volume_path {
+    // Path to the TextFormat VolumeInfo proto for the volume.
+    string volinfo = 1;
+
+    // file_path:hdf5_internal_dataset_path for the volume.
+    string hdf5 = 3;
+  }
+
+  // For volinfo Volumes only.
+  // JSON list of specs to decorate the volume via
+  // volume_decorator.from_specs.  E.g.:
+  //   '[{"decorator": "ZSub", "args": [{"2198": 2197}]}]'
+  // If left unspecified, the undecorated volume is used.
+  optional string decorator_specs = 2;
+}
+
+// TODO(mjanusz): Move the mask configuration to a separate proto and start
+// using it outside of the FFN framework.
+
+// Specifies how to convert a channel from a VolumeStore volume into a Boolean
+// exclusion mask. The mask will be formed by:
+//   min_value <= [channel_value] <= max_value
+// or, if `values` is set, to all voxels containing one of the values specified
+// therein.
+//
+// If `invert` is true, the complement of the mask computed according to the
+// above rules is used.
+message MaskChannelConfig {
+  optional int32 channel = 1;
+  optional float min_value = 2;
+  optional float max_value = 3;
+  repeated uint64 values = 5;
+  optional bool invert = 4;
+}
+
+message ImageMaskOptions {
+  repeated MaskChannelConfig channels = 1;
+}
+
+message VolumeMaskOptions {
+  optional DecoratedVolume mask = 1;
+  repeated MaskChannelConfig channels = 2;
+}
+
+message CoordinateExpressionOptions {
+  // Valid numpy expression, where 'x', 'y', and 'z' are dense index arrays
+  // defining the coordinates of every voxel in the current subvolume, in
+  // the global coordinate system of the volume.
+  //
+  // SECURITY WARNING: This gets passed to Python's eval, which will allow
+  // execution of arbitrary code. This option is for internal use only.
+  optional string expression = 1;
+}
+
+// Specifies how to convert a VolumeStore volume into a Boolean mask. The
+// per-channel masks built as described above are combined as a logical sum
+// to form the final mask, which can then be optionally inverted.
+message MaskConfig {
+  oneof source {
+    VolumeMaskOptions volume = 1;
+    ImageMaskOptions image = 2;
+    CoordinateExpressionOptions coordinate_expression = 3;
+  }
+  optional bool invert = 4;
+}
+
+message MaskConfigs {
+  repeated MaskConfig masks = 1;
+}
+
+// Describes a segmentation stored as subvolumes & basic transformations to
+// be applied to it when it is read.
+message SegmentationSource {
+  // Directory where subvolume files are stored.
+  optional string directory = 1;
+
+  // If specified, restrict segments to areas which at least this predicted
+  // object probability.
+  optional float threshold = 2;
+
+  // Whether to recompute connected components.
+  optional bool split_cc = 3;
+
+  // Minimum number of voxels a segment needs to have in order to be retained.
+  optional int32 min_size = 4;
+
+  // Exclusion mask to apply to the read data.
+  optional MaskConfigs mask = 5;
+}
+
+// Configures the details of the FFN inference process. Passed to the Canvas.
+// FoV stands for 'Field of View' of the network. See tools/inference_lib.borg
+// for currently reasonable default values.
+message InferenceOptions {
+  // Settings affecting how the FFN is run.
+  // --------------------------------------
+  // Threshold and padding values referring to soft object mask voxels are
+  // always specified as probabilities, even if the model operates in logit
+  // space.
+  //
+  // Value with which the starting seed is populated.
+  optional float init_activation = 1;
+  // Filler value to which unexplored areas are set.
+  optional float pad_value = 2;
+  // Threshold that has to be matched or exceeded at the center of a candidate
+  // FoV position in order for the FoV to be moved to that position.
+  optional float move_threshold = 3;
+  // Average (over the FoV) magnitude of per voxel probability change between
+  // subsequent FFN iterations, below which to stop iterating the FFN further
+  // without moving the FoV. Note that setting this to a positive value will
+  // cause at least two FFN inference calls to be made for every FoV position.
+  optional float consistency_threshold = 4;
+
+  // Negative values disable the disconnected seed bias. If >= 0, specifies
+  // the fraction of voxels within the prediction FoV that need to be active in
+  // order for the disconnected voxel freezing to be applied. Settings this to
+  // a small nonzero value can reduce split errors for thin processes.
+  optional float disco_seed_threshold = 5;
+
+  // Settings affecting how FFN predictions are converted into a segmentation.
+  // -------------------------------------------------------------------------
+  // Minimal separation of the seed voxel and any previously segmented voxel.
+  optional proto.Vector3j min_boundary_dist = 6;
+
+  // Probability threshold determining how the soft object mask is converted
+  // into a binary segmentation. The lower the value, the more spatially
+  // extended the segments will be (which can also lead to more merge errors).
+  optional float segment_threshold = 7;
+
+  // Minimum number of voxels that a segment needs to have in order to be
+  // retained in the segmentation.
+  optional int32 min_segment_size = 8;
+}
+
+// Settings related to self-prediction halting.
+// TODO(phli): Add more detailed explanations of the parameters and the
+// halting mechanism.
+message SelfPredictionOptions {
+  optional float threshold = 1;
+  optional float orig_threshold = 2 [default = 1.0];
+}
+
+// Settings related to online alignment.
+message AlignmentOptions {
+  enum AlignType {
+    UNKNOWN_ALIGNMENT = 0;
+    NO_ALIGNMENT = 1;
+  }
+
+  optional AlignType type = 1 [default = NO_ALIGNMENT];  // required
+
+  // Other options.
+  // --------------
+  // Set true to write out the subvolumes of aligned raw imagery that are used
+  // for inference.alignmentoptions
+  optional bool save_raw = 6;
+
+  // Next id: 10
+}
+
+// Passed to the Runner.
+message InferenceRequest {
+  // Input image and normalization parameters.
+  optional DecoratedVolume image = 24;
+  optional float image_mean = 2;
+  optional float image_stddev = 3;
+  optional string reference_histogram = 4;
+
+  // Exclusion mask for the purpose of histogram matching. Normally used to
+  // mask out areas of invalid data (empty space, resin, etc).
+  repeated MaskConfig histogram_masks = 26;
+
+  // Exclusion mask. The final mask is formed by the logical sum of the
+  // individual masks.
+  repeated MaskConfig masks = 5;
+
+  // 2-channel volume specifying a local (x,y) offset between slice 'z' and
+  // 'z+1'.
+  optional DecoratedVolume shift_mask = 6;
+
+  // Field of view around the current position to consider.  A position will
+  // be invalid for movement if the shift_mask volume contains shift channel
+  // values above shift_mask_threshold within this field of view.
+  //
+  // If this is left blank, the default behavior of inference.Runner is to use
+  // the input field of view of the network.
+  //
+  // Specified relative to current position, so legal for start to be
+  // negative. Note: since shift_mask volumes are w.r.t. the preceding slice,
+  // it makes sense to bias the shift_mask_fov 1 slice positive.  For
+  // anisotropic data, a value of start=(r, r, 0), size=(2r + 1, 2r + 1, 1)
+  // can give good results.
+  optional BoundingBox shift_mask_fov = 22;
+
+  // Resolution scaling factor specifying how much smaller the pixel size of
+  // the shift mask is compared to the image volume.
+  optional int32 shift_mask_scale = 7;
+
+  // If the magnitude of either component of the shift vector matches or
+  // exceeds this value within the FoV of the FFN, the object mask will not be
+  // extended within the FoV.
+  optional int32 shift_mask_threshold = 8;
+
+  // Movement policy.
+  // ----------------
+  // Name of the movement policy as <module_name>.<model_class>.
+  optional string movement_policy_name = 9;
+  // JSON string with arguments to be passed to the model constructor.
+  optional string movement_policy_args = 10;
+
+  // FFN model.
+  // ---------
+  // Name of the FFN model as <module_name>.<model_class>.
+  optional string model_name = 11;
+  // JSON string with arguments to be passed to the model constructor.
+  optional string model_args = 12;
+  optional string model_checkpoint_path = 13;
+
+  optional InferenceOptions inference_options = 14;
+
+  // Directory where the segmentation results should be saved.
+  // This directory will also contain the checkpoints (if any).
+  optional string segmentation_output_dir = 15;
+
+  // How often to save checkpoints, in seconds.
+  optional int32 checkpoint_interval = 16;
+
+  // Name of the seed policy. The code expects a function called
+  // policy_<seed_policy> in the `seed` module.
+  optional string seed_policy = 17;
+
+  // JSON string with arguments to be passed to the seed policy.
+  optional string seed_policy_args = 19;
+
+  optional SelfPredictionOptions self_prediction = 18;
+
+  // Options for the online aligner.
+  optional AlignmentOptions alignment_options = 20;
+
+  // Initial segmentation with which to prepopulate the canvas.
+  optional DecoratedVolume init_segmentation = 25;
+
+  // Next id: 27.
+}
+
+message ResegmentationPoint {
+  // Objects for which segmentation is to be performed. `id_b` can be omitted,
+  // in which case this is treated as describing an endpoint extension request.
+  optional uint64 id_a = 1;
+  optional uint64 id_b = 2;
+
+  // Decision point associated with the object pair. Normally this is (one of)
+  // the points of maximum proximity of the two objects.
+  optional proto.Vector3j point = 3;
+}
+
+message ResegmentationRequest {
+  // General FFN inference settings. Note that resegmentation requires that the
+  // initial segmentation volume is specified via `init_segmentation`.
+  optional InferenceRequest inference = 1;
+
+  // Defines the work to be done. A single request normally covers multiple
+  // points so that configuration options do not have to be specified separately
+  // per point.
+  repeated ResegmentationPoint points = 2;
+
+  // Number of voxels around the decision point. Defines the segmentation
+  // subvolume size.
+  optional proto.Vector3j radius = 5;
+
+  // Output options.
+  optional string output_directory = 6;
+
+  // If >0, shard results by the first N digits of the hash of the ID pair.
+  optional int32 subdir_digits = 7;
+
+  // Maximum number of segmentation attempts for a given starting segment.
+  // Segmentation is attempted again in case the resulting objects fail to
+  // recover the specified fraction of the original segment.
+  optional int32 max_retry_iters = 8 [default = 1];
+
+  // Radius of a subvolume around the seed point to exclude from future seeding,
+  // in case of a failed segmentation run.
+  optional proto.Vector3j exclusion_radius = 9;
+
+  // Defines a cuboid area around the decision point which to exclude from
+  // seeding.
+  optional proto.Vector3j init_exclusion_radius = 11;
+
+  // Fraction of voxels of the original segment that have to be recreated in
+  // order for the segmentation attempt to be considered successful.
+  optional float segment_recovery_fraction = 10;
+
+  // If true, when the first segment is not successfully recovered, the
+  // segmentation of the second segment is not attempted.
+  optional bool terminate_early = 12;
+}
+
+message CounterValue {
+  optional string name = 1;
+  optional int64 value = 2;
+}
+
+message TaskCounters {
+  repeated CounterValue counters = 1;
+
+  // Representative point for the task for which counters are stored
+  // (e.g. subvolume corner).
+  optional proto.Vector3j point = 2;
+
+  // Path to the file from which the counters were retrieved.
+  optional string filename = 3;
+}

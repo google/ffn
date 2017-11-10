@@ -1,0 +1,48 @@
+// Copyright 2017 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+// Defines messages representing regions of volumetric datasets.
+
+syntax = "proto2";
+
+package ffn;
+
+import "utils/vector.proto";
+
+// Describes a 3-dimensional axis-aligned hyperrectangular region of voxels.
+// The region contains whole numbers of rows, columns and layers of voxels
+// (i.e., not fractional ones).
+message BoundingBox {
+  // The minimum X, Y and Z coordinates of any voxel in the region.
+  optional proto.Vector3j start = 1;  // required
+
+  // The size of the region in the X, Y and Z dimensions, in units of voxels.
+  // The maximum X, Y and Z coordinates of any voxel in the region are
+  // start + size - 1.
+  //
+  // INVARIANT: size.x, y and z are all >0.
+  optional proto.Vector3j size = 2;  // required
+
+  // An optional string associated with this bounding box.
+  optional string description = 3;
+
+  // An optional object label associated with this bounding box. This is uint64
+  // to match usage of uint64 for segmentations represented by NDArrays.
+  optional uint64 object_label = 4;
+};
+
+// A sequence of bounding boxes.
+message BoundingBoxes {
+  repeated BoundingBox box = 1;
+};
