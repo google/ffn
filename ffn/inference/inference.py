@@ -669,7 +669,7 @@ class Canvas(object):
   def restore_checkpoint(self, path):
     """Restores state from the checkpoint at `path`."""
     logging.info('Restoring inference checkpoint: %s', path)
-    with gfile.OpenFast(path, 'r') as f:
+    with gfile.Open(path, 'r') as f:
       data = np.load(f)
 
       self.segmentation[:] = data['segmentation']
@@ -798,7 +798,7 @@ class Runner(object):
       self._shift_mask_volume = _open_or_none(request.shift_mask)
 
     if request.reference_histogram:
-      with gfile.OpenFast(request.reference_histogram, 'r') as f:
+      with gfile.Open(request.reference_histogram, 'r') as f:
         data = np.load(f)
         self._reference_lut = data['lut']
     else:
