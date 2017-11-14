@@ -25,7 +25,7 @@ are available on your system:
 - absl-py >= 0.1.4
 
 The code has been tested on an Ubuntu 16.04.3 LTS system with the library
-versions listed above.
+versions listed above, and equipped with a Tesla P100 GPU.
 
 # Training
 
@@ -62,7 +62,9 @@ You can then start training the FFN with:
 Note that both training and inference with the provided model are
 computationally expensive processes. We recommend a GPU-equipped machine
 for best results, particularly when using the FFN interactively in a Jupyter
-notebook.
+notebook. Training the FFN as configured above requires a GPU with 12 GB of RAM.
+You can reduce the model depth, `fov_size`, or number of features in the convolutional
+layers to reduce the memory usage.
 
 # Inference
 
