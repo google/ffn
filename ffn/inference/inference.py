@@ -662,8 +662,8 @@ class Canvas(object):
     self.segmentation[:] = init_seg
     self.seg_prob[self.segmentation > 0] = expit(
         self.options.segment_threshold)
-    self.max_id = np.max(self.segmentation)
-    logging.info('Max restored ID is: %d (relabel=%r)', self.max_id,
+    self._max_id = np.max(self.segmentation)
+    logging.info('Max restored ID is: %d (relabel=%r)', self._max_id,
                  relabel_init_ids)
 
   def restore_checkpoint(self, path):
