@@ -63,8 +63,8 @@ Note that both training and inference with the provided model are
 computationally expensive processes. We recommend a GPU-equipped machine
 for best results, particularly when using the FFN interactively in a Jupyter
 notebook. Training the FFN as configured above requires a GPU with 12 GB of RAM.
-You can reduce the model depth, `fov_size`, or number of features in the convolutional
-layers to reduce the memory usage.
+You can reduce the batch size, model depth, `fov_size`, or number of features in
+the convolutional layers to reduce the memory usage.
 
 # Inference
 
