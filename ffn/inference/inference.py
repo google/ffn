@@ -921,7 +921,7 @@ class Runner(object):
 
       # Fetch the image from the volume using the src bounding box.
       def get_data_3d(volume, bbox):
-        slc = bbox.ToSlice()
+        slc = bbox.to_slice()
         if volume.ndim == 4:
           slc = np.index_exp[0:1] + slc
         data = volume[slc]

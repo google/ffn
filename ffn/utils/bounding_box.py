@@ -75,7 +75,7 @@ class BoundingBox(object):
       else:
         self.size = end - start
 
-  def AdjustedBy(self, start=None, end=None):
+  def adjusted_by(self, start=None, end=None):
     """Adds an offset to the start and/or end bounds of the bounding box.
 
     Both arguments can be any argument type supported by
@@ -157,14 +157,14 @@ class BoundingBox(object):
               'size must not be specified if both start and end are given')
         return BoundingBox(self.start + start, end - start)
 
-  def ToProto(self):
+  def to_proto(self):
     """Returns a corresponding BoundingBox proto."""
     proto = bounding_box_pb2.BoundingBox()
     proto.start.CopyFrom(geom_utils.ToVector3j(self.start))
     proto.size.CopyFrom(geom_utils.ToVector3j(self.size))
     return proto
 
-  def ToSlice(self):
+  def to_slice(self):
     """Returns slice in C-order (ZYX)."""
     return np.index_exp[self.start[2]:self.end[2],  #
                         self.start[1]:self.end[1],  #
@@ -189,7 +189,7 @@ class BoundingBox(object):
     return hash((tuple(self.start), tuple(self.size)))
 
 
-def Intersection(box0, box1):
+def intersection(box0, box1):
   """Get intersection between two bounding boxes, or None."""
   if isinstance(box0, bounding_box_pb2.BoundingBox):
     box0 = BoundingBox(box0.start, box0.size)
@@ -205,7 +205,7 @@ def Intersection(box0, box1):
   return BoundingBox(start=start, end=end)
 
 
-def Intersections(boxes0, boxes1):
+def intersections(boxes0, boxes1):
   """Get intersections between two sequences of boxes.
 
   Args:
@@ -219,12 +219,12 @@ def Intersections(boxes0, boxes1):
   """
   intersections = []
   for box0 in boxes0:
-    current_intersections = [Intersection(box0, box1) for box1 in boxes1]
+    current_intersections = [intersection(box0, box1) for box1 in boxes1]
     intersections.extend([i for i in current_intersections if i is not None])
   return intersections
 
 
-def Containing(*boxes):
+def containing(*boxes):
   """Get the minimum bounding box containing all specified boxes.
 
   Args:
@@ -245,30 +245,3 @@ def Containing(*boxes):
     start = np.minimum(start, box.start)
     end = np.maximum(end, box.end)
   return BoundingBox(start=start, end=end)
-
-
-def GetBoundingBoxesOrFull(volinfo):
-  bounding_boxes = [BoundingBox(b.start, b.size) for b in volinfo.bounding_box]
-  if not bounding_boxes:
-    bounding_boxes.append(BoundingBox((0, 0, 0), volinfo.size))
-  return bounding_boxes
-
-
-def WithBoundingBox(volinfo, bbox):
-  """Get a copy of the VolumeInfo with the specified bounding box.
-
-  Any existing bounding boxes set in volinfo are ignored.
-
-  Args:
-    volinfo: VolumeInfo proto to be copied
-    bbox: BoundingBox object or proto to be used
-
-  Returns:
-    A new VolumeInfo proto with a single bounding box equal to bbox.
-  """
-  if isinstance(bbox, BoundingBox):
-    bbox = bbox.ToProto()
-  volinfo = copy.deepcopy(volinfo)
-  del volinfo.bounding_box[:]
-  volinfo.bounding_box.extend([bbox])
-  return volinfo

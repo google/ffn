@@ -241,7 +241,7 @@ def clip_subvolume_to_bounds(corner, size, volume):
     volume_size = volume_size[1:]
   volume_bounds = bounding_box.BoundingBox(start=(0, 0, 0), size=volume_size)
   subvolume_bounds = bounding_box.BoundingBox(start=corner, size=size)
-  clipped_bounds = bounding_box.Intersection(volume_bounds, subvolume_bounds)
+  clipped_bounds = bounding_box.intersection(volume_bounds, subvolume_bounds)
   return clipped_bounds.start, clipped_bounds.size
 
 
