@@ -31,6 +31,26 @@ versions listed above, and equipped with a Tesla P100 GPU.
 
 FFN networks can be trained with the `train.py` script, which expects a
 TFRecord file of coordinates at which to sample data from input volumes.
+
+## Preparing the training data
+
+There are two scripts to generate training coordinate files for
+a labeled dataset stored in HDF5 files: `compute_partitions.py` and
+`build_coordinates.py`.
+
+`compute_partitions.py` transforms the label volume into an intermediate
+volume where the value of every voxel `A` corresponds to the quantized
+fraction of voxels labeled identically to `A` within a subvolume of
+radius `lom_radius` centered at `A`. `lom_radius` should normally be
+set to `(fov_size + deltas) // 2` (where `fov_size` and `deltas` are
+FFN model settings). Every such quantized fraction is called a *partition*.
+
+`build_coordinates.py` uses the partition volume from the previous step
+to produce a TFRecord file of coordinates in which every partition is
+represented approximately equally frequently.
+
+## Sample data
+
 We provide a sample coordinate file for the FIB-25 `validation1` volume
 included in `third_party`. Due to its size, that file is hosted in
 Google Cloud Storage. If you haven't used it before, you will need to
