@@ -57,7 +57,7 @@ class StatCounter(object):
       x: value to increment by
       export: whether to also increment the streamz counter
     """
-    self._counter += x
+    self._counter += int(x)
     self._update()
 
   def Get(self):
@@ -145,7 +145,7 @@ class Counters(object):
     pass
 
   def dump(self, filename):
-    with storage.atomic_file(filename) as fd:
+    with storage.atomic_file(filename, 'w') as fd:
       for name, counter in sorted(self._counters.items()):
         fd.write('%s: %d\n' % (name, counter.value))
 
