@@ -35,20 +35,23 @@ from . import storage
 class StatCounter(object):
   """Stat counter with a MR counter interface."""
 
-  def __init__(self, update, name):
+  def __init__(self, update, name, parent=None):
     """Initializes the counter.
 
     Args:
       update: callable taking no arguments; will be called when
           the counter is incremented
       name: name of the counter to use for streamz
+      parent: optional StatCounter object to which to propagate
+          any updates of the current counter
     """
     self._counter = 0
     self._update = update
+    self._lock = threading.Lock()
+    self._parent = parent
 
   def Increment(self):
-    self._counter += 1
-    self._update()
+    self.IncrementBy(1)
 
   def IncrementBy(self, x, export=True):
     """Increments the counter value by 'x'.
@@ -57,8 +60,12 @@ class StatCounter(object):
       x: value to increment by
       export: whether to also increment the streamz counter
     """
-    self._counter += int(x)
-    self._update()
+    with self._lock:
+      self._counter += int(x)
+      self._update()
+
+    if self._parent is not None:
+      self._parent.IncrementBy(x)
 
   def Get(self):
     return self.value
@@ -123,17 +130,21 @@ class TimedIter(object):
 class Counters(object):
   """Container for counters."""
 
-  def __init__(self):
+  def __init__(self, parent=None):
+    self._lock = threading.Lock()  # for self._counters
     self.reset()
+    self.parent = parent
 
   def reset(self):
-    self._counters = {}
+    with self._lock:
+      self._counters = {}
     self._last_update = 0
 
   def __getitem__(self, name):
-    if name not in self._counters:
-      self._counters[name] = self._make_counter(name)
-    return self._counters[name]
+    with self._lock:
+      if name not in self._counters:
+        self._counters[name] = self._make_counter(name)
+      return self._counters[name]
 
   def __iter__(self):
     return self._counters.items()
@@ -143,6 +154,9 @@ class Counters(object):
 
   def update_status(self):
     pass
+
+  def get_sub_counters(self):
+    return Counters(self)
 
   def dump(self, filename):
     with storage.atomic_file(filename, 'w') as fd:
