@@ -22,6 +22,8 @@ from collections import namedtuple
 import functools
 import json
 import logging
+import os
+import threading
 import time
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
@@ -34,6 +36,7 @@ import tensorflow as tf
 
 from tensorflow import gfile
 from . import align
+from . import executor
 from . import inference_pb2
 from . import inference_utils
 from . import movement
@@ -158,8 +161,8 @@ def self_prediction_halt(
     else:
       t = threshold
 
-    # [0, 0] is by convention the total incorrect proportion prediction.
-    halt = fetches['self_prediction'][0, 0] > t
+    # [0] is by convention the total incorrect proportion prediction.
+    halt = fetches['self_prediction'][0] > t
 
     if halt:
       counters['halts'].Increment()
@@ -182,7 +185,7 @@ class Canvas(object):
 
   def __init__(self,
                model,
-               session,
+               tf_executor,
                image,
                options,
                counters=None,
@@ -197,7 +200,7 @@ class Canvas(object):
 
     Args:
       model: FFNModel object
-      session: TF session to use for FFN inference
+      tf_executor: Executor object to use for inference
       image: 3d ndarray-like of shape (z, y, x)
       options: InferenceOptions proto
       counters: (optional) counter container, where __getitem__ returns a
@@ -218,8 +221,9 @@ class Canvas(object):
           image in (z, y, x)
     """
     self.model = model
-    self.session = session
     self.image = image
+    self.executor = tf_executor
+    self._exec_client_id = None
 
     self.options = inference_pb2.InferenceOptions()
     self.options.CopyFrom(options)
@@ -259,7 +263,11 @@ class Canvas(object):
     # model.
     self.seed = np.zeros(self.shape, dtype=np.float32)
     self.segmentation = np.zeros(self.shape, dtype=np.int32)
-    self.seg_prob = np.zeros(self.shape, dtype=np.float32)
+    self.seg_prob = np.zeros(self.shape, dtype=np.uint8)
+
+    # When an initial segmentation is provided, maps the global ID space
+    # to locally used IDs.
+    self.global_to_local_ids = {}
 
     self.seed_policy = None
     self._seed_policy_state = None
@@ -267,8 +275,9 @@ class Canvas(object):
     # Maximum segment ID already assigned.
     self._max_id = 0
 
-    # Segment ID -> seed location.
-    self.origins = {}
+    # Maps of segment id -> ..
+    self.origins = {}  # seed location
+    self.overlaps = {}  # (ids, number overlapping voxels)
 
     # Whether to always create a new seed in segment_at.
     self.reset_seed_per_segment = True
@@ -284,6 +293,26 @@ class Canvas(object):
     self.reset_state((0, 0, 0))
     self.t_last_predict = None
 
+  def _register_client(self):
+    if self._exec_client_id is None:
+      self._exec_client_id = self.executor.start_client()
+      logging.info('Registered as client %d.', self._exec_client_id)
+
+  def _deregister_client(self):
+    if self._exec_client_id is not None:
+      logging.info('Deregistering client %d', self._exec_client_id)
+      self.executor.finish_client(self._exec_client_id)
+      self._exec_client_id = None
+
+  def __del__(self):
+    # Note that the presence of this method will cause a memory leak in
+    # case the Canvas object is part of a reference cycle. Use weakref.proxy
+    # where such cycles are really needed.
+    self._deregister_client()
+
+  def local_id(self, segment_id):
+    return self.global_to_local_ids.get(segment_id, segment_id)
+
   def reset_state(self, start_pos):
     # Resetting the movement_policy is currently necessary to update the
     # policy's bitmask for whether a position is already segmented (the
@@ -295,6 +324,7 @@ class Canvas(object):
 
     self._min_pos = np.array(start_pos)
     self._max_pos = np.array(start_pos)
+    self._register_client()
 
   def is_valid_pos(self, pos, ignore_move_threshold=False):
     """Returns True if segmentation should be attempted at the given position.
@@ -350,7 +380,6 @@ class Canvas(object):
       start = np.array(pos) - self.margin
       end = start + self._input_image_size
       img = self.image[[slice(s, e) for s, e in zip(start, end)]]
-      extra_fetches['pred'] = self.model.logistic, self.model.logits
 
       # Record the amount of time spent on non-prediction tasks.
       if self.t_last_predict is not None:
@@ -358,15 +387,16 @@ class Canvas(object):
         self.counters['inference-not-predict-ms'].IncrementBy(
             delta_t * MSEC_IN_SEC)
 
+      extra_fetches['logits'] = self.model.logits
       with timer_counter(self.counters, 'inference'):
-        fetches = self.session.run(extra_fetches, {
-            self.model.input_seed: logit_seed[np.newaxis, ..., np.newaxis],
-            self.model.input_patches: img[np.newaxis, ..., np.newaxis]})
+        fetches = self.executor.predict(self._exec_client_id,
+                                        logit_seed, img, extra_fetches)
 
       self.t_last_predict = time.time()
 
-    prob, logits = fetches.pop('pred')  # Extract pred.
-    return (prob[0, ..., 0], logits[0, ..., 0]), fetches
+    logits = fetches.pop('logits')
+    prob = expit(logits)
+    return (prob[..., 0], logits[..., 0]), fetches
 
   def update_at(self, pos, start_pos):
     """Updates object mask prediction at a specific position.
@@ -519,6 +549,10 @@ class Canvas(object):
 
     return num_iters
 
+  def log_info(self, string, *args, **kwargs):
+    logging.info('[cl %d] ' + string, self._exec_client_id,
+                 *args, **kwargs)
+
   def segment_all(self, seed_policy=seed.PolicyPeaks):
     """Segments the input image.
 
@@ -542,7 +576,8 @@ class Canvas(object):
         # When starting a new segment the move_threshold on the probability
         # should be ignored when determining if the position is valid.
         if not (self.is_valid_pos(pos, ignore_move_threshold=True)
-                and self.restrictor.is_valid_pos(pos)):
+                and self.restrictor.is_valid_pos(pos)
+                and self.restrictor.is_valid_seed(pos)):
           continue
 
         self._maybe_save_checkpoint()
@@ -556,7 +591,7 @@ class Canvas(object):
           self.segmentation[pos] = -1
           continue
 
-        logging.info('Starting segmentation at %r (zyx)', pos)
+        self.log_info('Starting segmentation at %r (zyx)', pos)
 
         # Try segmentation.
         seg_start = time.time()
@@ -567,7 +602,7 @@ class Canvas(object):
         if num_iters <= 0:
           self.counters['invalid-other-time-ms'].IncrementBy(t_seg *
                                                              MSEC_IN_SEC)
-          logging.info('Failed: num iters was %d', num_iters)
+          self.log_info('Failed: num iters was %d', num_iters)
           continue
 
         # Original seed too weak?
@@ -575,7 +610,7 @@ class Canvas(object):
           # Mark this location as excluded.
           if self.segmentation[pos] == 0:
             self.segmentation[pos] = -1
-          logging.info('Failed: weak seed')
+          self.log_info('Failed: weak seed')
           self.counters['invalid-weak-time-ms'].IncrementBy(t_seg * MSEC_IN_SEC)
           continue
 
@@ -592,6 +627,13 @@ class Canvas(object):
         mask = self.seed[sel] >= self.options.segment_threshold
         raw_segmented_voxels = np.sum(mask)
 
+        # Record existing segment IDs overlapped by the newly added object.
+        overlapped_ids, counts = np.unique(self.segmentation[sel][mask],
+                                           return_counts=True)
+        valid = overlapped_ids > 0
+        overlapped_ids = overlapped_ids[valid]
+        counts = counts[valid]
+
         mask &= self.segmentation[sel] <= 0
         actual_segmented_voxels = np.sum(mask)
 
@@ -599,7 +641,7 @@ class Canvas(object):
         if actual_segmented_voxels < self.options.min_segment_size:
           if self.segmentation[pos] == 0:
             self.segmentation[pos] = -1
-          logging.info('Failed: too small: %d', actual_segmented_voxels)
+          self.log_info('Failed: too small: %d', actual_segmented_voxels)
           self.counters['invalid-small-time-ms'].IncrementBy(t_seg *
                                                              MSEC_IN_SEC)
           continue
@@ -614,70 +656,80 @@ class Canvas(object):
           self._max_id += 1
 
         self.segmentation[sel][mask] = self._max_id
-        self.seg_prob[sel][mask] = expit(self.seed[sel][mask])
+        self.seg_prob[sel][mask] = storage.quantize_probability(
+            expit(self.seed[sel][mask]))
 
-        logging.info('Created supervoxel:%d  seed(zyx):%s  size:%d  iters:%d  ',
-                     self._max_id, pos,
-                     actual_segmented_voxels, num_iters)
+        self.log_info('Created supervoxel:%d  seed(zyx):%s  size:%d  iters:%d',
+                      self._max_id, pos,
+                      actual_segmented_voxels, num_iters)
+
+        self.overlaps[self._max_id] = np.array([overlapped_ids, counts])
 
         # Record information about how a given supervoxel was created.
         self.origins[self._max_id] = storage.OriginInfo(pos, num_iters, t_seg)
         self.counters['valid-time-ms'].IncrementBy(t_seg * MSEC_IN_SEC)
 
-  def init_segmentation_from_volstore(self, volstore, corner, end,
-                                      align_and_crop=None,
-                                      relabel_init_ids=True):
+    self.log_info('Segmentation done.')
+
+    # It is important to deregister ourselves when the segmentation is complete.
+    # This matters particularly if less than a full batch of subvolumes remains
+    # to be segmented. Without the deregistration, the executor will wait to
+    # fill the full batch (no longer possible) instead of proceeding with
+    # inference.
+    self._deregister_client()
+
+  def init_segmentation_from_volume(self, volume, corner, end,
+                                    align_and_crop=None):
     """Initializes segmentation from an existing VolumeStore.
 
     This is useful to start inference with an existing segmentation.
     The segmentation does not need to be generated with an FFN.
 
     Args:
-      volstore: VolumeStore object
+      volume: volume object, as returned by storage.decorated_volume.
       corner: location at which to read data as (z, y, x)
       end: location at which to stop reading data as (z, y, x)
       align_and_crop: callable to align & crop a 3d segmentation subvolume
-      relabel_init_ids: if True, the segment IDs from the loaded segmentation
-          will be mapped to [1..N] where N is the number of objects in the
-          loaded subvolume
     """
-    logging.info('Loading initial segmentation from (zyx) %r:%r',
-                 corner, end)
+    self.log_info('Loading initial segmentation from (zyx) %r:%r',
+                  corner, end)
 
-    init_seg = volstore[:,
-                        corner[0]:end[0],
-                        corner[1]:end[1],
-                        corner[2]:end[2]]
+    init_seg = volume[:,  #
+                      corner[0]:end[0],  #
+                      corner[1]:end[1],  #
+                      corner[2]:end[2]]
 
-    if relabel_init_ids:
-      init_seg, _ = segmentation.make_labels_contiguous(init_seg)
+    init_seg, global_to_local = segmentation.make_labels_contiguous(init_seg)
     init_seg = init_seg[0, ...]
 
-    logging.info('Segmentation loaded, shape: %r. Canvas segmentation is %r',
-                 init_seg.shape, self.segmentation.shape)
+    self.global_to_local_ids = dict(global_to_local)
+
+    self.log_info('Segmentation loaded, shape: %r. Canvas segmentation is %r',
+                  init_seg.shape, self.segmentation.shape)
     if align_and_crop is not None:
       init_seg = align_and_crop(init_seg)
-      logging.info('Segmentation cropped to: %r', init_seg.shape)
+      self.log_info('Segmentation cropped to: %r', init_seg.shape)
 
     self.segmentation[:] = init_seg
-    self.seg_prob[self.segmentation > 0] = expit(
-        self.options.segment_threshold)
+    self.seg_prob[self.segmentation > 0] = storage.quantize_probability(
+        np.array([1.0]))
     self._max_id = np.max(self.segmentation)
-    logging.info('Max restored ID is: %d (relabel=%r)', self._max_id,
-                 relabel_init_ids)
+    self.log_info('Max restored ID is: %d.', self._max_id)
 
   def restore_checkpoint(self, path):
     """Restores state from the checkpoint at `path`."""
-    logging.info('Restoring inference checkpoint: %s', path)
+    self.log_info('Restoring inference checkpoint: %s', path)
     with gfile.Open(path, 'r') as f:
       data = np.load(f)
 
       self.segmentation[:] = data['segmentation']
       self.seed[:] = data['seed']
-      self.seg_prob[:] = storage.dequantize_probability(data['seg_qprob'])
+      self.seg_prob[:] = data['seg_qprob']
       self.history_deleted = list(data['history_deleted'])
       self.history = list(data['history'])
       self.origins = data['origins'].item()
+      if 'overlaps' in data:
+        self.overlaps = data['overlaps'].item()
 
       segmented_voxels = np.sum(self.segmentation != 0)
       self.counters['voxels-segmented'].Set(segmented_voxels)
@@ -693,10 +745,13 @@ class Canvas(object):
 
       self.counters.loads(data['counters'].item())
 
-    logging.info('Inference checkpoint restored.')
+    self.log_info('Inference checkpoint restored.')
 
   def save_checkpoint(self, path):
+    """Saves a inference checkpoint to `path`."""
+    self.log_info('Saving inference checkpoint to %s.', path)
     with timer_counter(self.counters, 'save_checkpoint'):
+      gfile.MakeDirs(os.path.dirname(path))
       with storage.atomic_file(path) as fd:
         seed_policy_state = None
         if self.seed_policy is not None:
@@ -705,14 +760,15 @@ class Canvas(object):
         np.savez_compressed(fd,
                             movement_policy=self.movement_policy.get_state(),
                             segmentation=self.segmentation,
-                            seg_qprob=storage.quantize_probability(
-                                self.seg_prob),
+                            seg_qprob=self.seg_prob,
                             seed=self.seed,
                             origins=self.origins,
+                            overlaps=self.overlaps,
                             history=np.array(self.history),
                             history_deleted=np.array(self.history_deleted),
                             seed_policy_state=seed_policy_state,
                             counters=self.counters.dumps())
+    self.log_info('Inference checkpoint saved.')
 
   def _maybe_save_checkpoint(self):
     """Attempts to save a checkpoint.
@@ -742,6 +798,19 @@ class Runner(object):
 
   def __init__(self):
     self.counters = inference_utils.Counters()
+    self.executor = None
+
+  def __del__(self):
+    self.stop_executor()
+
+  def stop_executor(self):
+    """Shuts down the executor.
+
+    No-op when no executor is active.
+    """
+    if self.executor is not None:
+      self.executor.stop_server()
+      self.executor = None
 
   def _load_model_checkpoint(self, checkpoint_path):
     """Restores the inference model from a training checkpoint.
@@ -754,7 +823,7 @@ class Runner(object):
       self.model.saver.restore(self.session, checkpoint_path)
       logging.info('Checkpoint loaded.')
 
-  def start(self, request):
+  def start(self, request, batch_size=1, exec_cls=None, session=None):
     """Opens input volumes and initializes the FFN."""
     self.request = request
     assert self.request.segmentation_output_dir
@@ -773,10 +842,18 @@ class Runner(object):
       assert self._image_volume is not None
 
       if request.HasField('init_segmentation'):
-        self._init_seg_volstore = storage.decorated_volume(
+        self.init_seg_volume = storage.decorated_volume(
             request.init_segmentation, cache_max_bytes=int(1e8))
       else:
-        self._init_seg_volstore = None
+        self.init_seg_volume = None
+
+      def _open_or_none(settings):
+        if settings.WhichOneof('volume_path') is None:
+          return None
+        return storage.decorated_volume(
+            settings, cache_max_bytes=int(1e7), cache_compression=False)
+      self._mask_volumes = {}
+      self._shift_mask_volume = _open_or_none(request.shift_mask)
 
       alignment_options = request.alignment_options
       null_alignment = inference_pb2.AlignmentOptions.NO_ALIGNMENT
@@ -804,21 +881,36 @@ class Runner(object):
     else:
       self._reference_lut = None
 
+    self.stop_executor()
+
+    if session is None:
+      config = tf.ConfigProto()
+      tf.reset_default_graph()
+      session = tf.Session(config=config)
+    self.session = session
+    logging.info('Available TF devices: %r', self.session.list_devices())
+
     # Initialize the FFN model.
-    tf.reset_default_graph()
     model_class = import_symbol(request.model_name)
     if request.model_args:
       args = json.loads(request.model_args)
     else:
       args = {}
+
+    args['batch_size'] = batch_size
     self.model = model_class(**args)
-    self.model.define_tf_graph()
+
+    if exec_cls is None:
+      exec_cls = executor.ThreadingBatchExecutor
+
+    self.executor = exec_cls(
+        self.model, self.session, self.counters, batch_size)
     self.movement_policy_fn = movement.get_policy_fn(request, self.model)
 
-    config = tf.ConfigProto()
-    self.session = tf.Session(config=config)
-
+    self.saver = tf.train.Saver()
     self._load_model_checkpoint(request.model_checkpoint_path)
+
+    self.executor.start_server()
 
   def make_restrictor(self, corner, subvol_size, image, alignment):
     """Builds a MovementRestrictor object."""
@@ -836,6 +928,19 @@ class Runner(object):
           return self.ALL_MASKED
 
         kwargs['mask'] = final_mask
+
+    if self.request.seed_masks:
+      with timer_counter(self.counters, 'load-seed-mask'):
+        seed_mask = storage.build_mask(self.request.seed_masks,
+                                       corner, subvol_size,
+                                       self._mask_volumes,
+                                       image, alignment)
+
+        if np.all(seed_mask):
+          logging.info('All seeds masked.')
+          return self.ALL_MASKED
+
+        kwargs['seed_mask'] = seed_mask
 
     if self._shift_mask_volume:
       with timer_counter(self.counters, 'load-shift-mask'):
@@ -882,21 +987,21 @@ class Runner(object):
     else:
       return None
 
-  def make_canvas(self, corner, subvol_size, relabel_init_ids=True):
+  def make_canvas(self, corner, subvol_size, **canvas_kwargs):
     """Builds the Canvas object for inference on a subvolume.
 
     Args:
       corner: start of the subvolume (z, y, x)
       subvol_size: size of the subvolume (z, y, x)
-      relabel_init_ids: if True, and if an initial segmentation is loaded,
-          the original IDs of that segmentaton will not necessarily be retained.
+      **canvas_kwargs: passed to Canvas
 
     Returns:
       A tuple of:
         Canvas object
         Alignment object
     """
-    with timer_counter(self.counters, 'load-image'):
+    subvol_counters = self.counters.get_sub_counters()
+    with timer_counter(subvol_counters, 'load-image'):
       logging.info('Process subvolume: %r', corner)
 
       # A Subvolume with bounds defined by (src_size, src_corner) is guaranteed
@@ -980,22 +1085,22 @@ class Runner(object):
 
     canvas = Canvas(
         self.model,
-        self.session,
+        self.executor,
         image,
         self.request.inference_options,
-        counters=self.counters,
+        counters=subvol_counters,
         restrictor=restrictor,
         movement_policy_fn=self.movement_policy_fn,
         halt_signaler=halt_signaler,
         checkpoint_path=storage.checkpoint_path(
             self.request.segmentation_output_dir, corner),
         checkpoint_interval_sec=self.request.checkpoint_interval,
-        corner_zyx=dst_corner)
+        corner_zyx=dst_corner,
+        **canvas_kwargs)
 
     if self.request.HasField('init_segmentation'):
-      canvas.init_segmentation_from_volstore(self._init_seg_volstore,
-                                             src_corner, src_bbox.end[::-1],
-                                             align_and_crop, relabel_init_ids)
+      canvas.init_segmentation_from_volume(self.init_seg_volume, src_corner,
+                                           src_bbox.end[::-1], align_and_crop)
     return canvas, alignment
 
   def get_seed_policy(self, corner, subvol_size):
@@ -1048,31 +1153,36 @@ class Runner(object):
     # Remove markers.
     canvas.segmentation[canvas.segmentation < 0] = 0
 
-    # Save probability map separately.
-    prob = unalign_image(storage.quantize_probability(canvas.seg_prob))
-    with storage.atomic_file(prob_path) as fd:
-      np.savez_compressed(fd, qprob=prob)
-
     # Save segmentation results. Reduce # of bits per item if possible.
     storage.save_subvolume(
         unalign_image(canvas.segmentation),
         unalign_origins(canvas.origins, np.array(canvas.corner_zyx)),
         target_path,
         request=self.request.SerializeToString(),
-        counters=canvas.counters.dumps())
+        counters=canvas.counters.dumps(),
+        overlaps=canvas.overlaps)
 
-  def run(self, corner, subvol_size):
+    # Save probability map separately. This has to happen after the
+    # segmentation is saved, as `save_subvolume` will create any necessary
+    # directories.
+    prob = unalign_image(canvas.seg_prob)
+    with storage.atomic_file(prob_path) as fd:
+      np.savez_compressed(fd, qprob=prob)
+
+  def run(self, corner, subvol_size, reset_counters=True):
     """Runs FFN inference over a subvolume.
 
     Args:
       corner: start of the subvolume (z, y, x)
       subvol_size: size of the subvolume (z, y, x)
+      reset_counters: whether to reset the counters
 
     Returns:
       Canvas object with the segmentation or None if the canvas could not
       be created or the segmentation subvolume already exists.
     """
-    self.counters.reset()
+    if reset_counters:
+      self.counters.reset()
 
     seg_path = storage.segmentation_path(
         self.request.segmentation_output_dir, corner)

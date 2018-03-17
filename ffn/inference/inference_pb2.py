@@ -35,7 +35,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   name='inference/inference.proto',
   package='ffn',
   syntax='proto2',
-  serialized_pb=_b('\n\x19inference/inference.proto\x12\x03\x66\x66n\x1a\x12utils/vector.proto\x1a\x18utils/bounding_box.proto\"\\\n\x0f\x44\x65\x63oratedVolume\x12\x11\n\x07volinfo\x18\x01 \x01(\tH\x00\x12\x0e\n\x04hdf5\x18\x03 \x01(\tH\x00\x12\x17\n\x0f\x64\x65\x63orator_specs\x18\x02 \x01(\tB\r\n\x0bvolume_path\"j\n\x11MaskChannelConfig\x12\x0f\n\x07\x63hannel\x18\x01 \x01(\x05\x12\x11\n\tmin_value\x18\x02 \x01(\x02\x12\x11\n\tmax_value\x18\x03 \x01(\x02\x12\x0e\n\x06values\x18\x05 \x03(\x04\x12\x0e\n\x06invert\x18\x04 \x01(\x08\"<\n\x10ImageMaskOptions\x12(\n\x08\x63hannels\x18\x01 \x03(\x0b\x32\x16.ffn.MaskChannelConfig\"a\n\x11VolumeMaskOptions\x12\"\n\x04mask\x18\x01 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12(\n\x08\x63hannels\x18\x02 \x03(\x0b\x32\x16.ffn.MaskChannelConfig\"1\n\x1b\x43oordinateExpressionOptions\x12\x12\n\nexpression\x18\x01 \x01(\t\"\xbb\x01\n\nMaskConfig\x12(\n\x06volume\x18\x01 \x01(\x0b\x32\x16.ffn.VolumeMaskOptionsH\x00\x12&\n\x05image\x18\x02 \x01(\x0b\x32\x15.ffn.ImageMaskOptionsH\x00\x12\x41\n\x15\x63oordinate_expression\x18\x03 \x01(\x0b\x32 .ffn.CoordinateExpressionOptionsH\x00\x12\x0e\n\x06invert\x18\x04 \x01(\x08\x42\x08\n\x06source\"-\n\x0bMaskConfigs\x12\x1e\n\x05masks\x18\x01 \x03(\x0b\x32\x0f.ffn.MaskConfig\"~\n\x12SegmentationSource\x12\x11\n\tdirectory\x18\x01 \x01(\t\x12\x11\n\tthreshold\x18\x02 \x01(\x02\x12\x10\n\x08split_cc\x18\x03 \x01(\x08\x12\x10\n\x08min_size\x18\x04 \x01(\x05\x12\x1e\n\x04mask\x18\x05 \x01(\x0b\x32\x10.ffn.MaskConfigs\"\xf8\x01\n\x10InferenceOptions\x12\x17\n\x0finit_activation\x18\x01 \x01(\x02\x12\x11\n\tpad_value\x18\x02 \x01(\x02\x12\x16\n\x0emove_threshold\x18\x03 \x01(\x02\x12\x1d\n\x15\x63onsistency_threshold\x18\x04 \x01(\x02\x12\x1c\n\x14\x64isco_seed_threshold\x18\x05 \x01(\x02\x12.\n\x11min_boundary_dist\x18\x06 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x19\n\x11segment_threshold\x18\x07 \x01(\x02\x12\x18\n\x10min_segment_size\x18\x08 \x01(\x05\"E\n\x15SelfPredictionOptions\x12\x11\n\tthreshold\x18\x01 \x01(\x02\x12\x19\n\x0eorig_threshold\x18\x02 \x01(\x02:\x01\x31\"\xef\x03\n\x10\x41lignmentOptions\x12;\n\x04type\x18\x01 \x01(\x0e\x32\x1f.ffn.AlignmentOptions.AlignType:\x0cNO_ALIGNMENT\x12\x19\n\x11\x61lignment_volinfo\x18\x02 \x01(\t\x12\x15\n\rscale_divisor\x18\x03 \x01(\x05\x12\x1a\n\x12reversed_fiducials\x18\x04 \x01(\x08\x12\x41\n\x0eshift_function\x18\x05 \x01(\x0e\x32#.ffn.AlignmentOptions.ShiftFunction:\x04MEAN\x12\x1d\n\x15\x61\x62ort_shift_threshold\x18\t \x01(\x05\x12\x11\n\tmax_shift\x18\x07 \x01(\x05\x12\x18\n\nxcorr_mode\x18\x08 \x01(\t:\x04\x66ull\x12\x10\n\x08save_raw\x18\x06 \x01(\x08\"l\n\tAlignType\x12\x15\n\x11UNKNOWN_ALIGNMENT\x10\x00\x12\x10\n\x0cNO_ALIGNMENT\x10\x01\x12\x0f\n\x0bTRANSLATION\x10\x02\x12\t\n\x05RIGID\x10\x03\x12\x0e\n\nSIMILARITY\x10\x04\x12\n\n\x06\x41\x46\x46INE\x10\x05\"A\n\rShiftFunction\x12\x1a\n\x16UNKNOWN_SHIFT_FUNCTION\x10\x00\x12\x08\n\x04MEAN\x10\x01\x12\n\n\x06MEDIAN\x10\x02\"\x8e\x06\n\x10InferenceRequest\x12#\n\x05image\x18\x18 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12\x12\n\nimage_mean\x18\x02 \x01(\x02\x12\x14\n\x0cimage_stddev\x18\x03 \x01(\x02\x12\x1b\n\x13reference_histogram\x18\x04 \x01(\t\x12(\n\x0fhistogram_masks\x18\x1a \x03(\x0b\x32\x0f.ffn.MaskConfig\x12\x1e\n\x05masks\x18\x05 \x03(\x0b\x32\x0f.ffn.MaskConfig\x12(\n\nshift_mask\x18\x06 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12(\n\x0eshift_mask_fov\x18\x16 \x01(\x0b\x32\x10.ffn.BoundingBox\x12\x18\n\x10shift_mask_scale\x18\x07 \x01(\x05\x12\x1c\n\x14shift_mask_threshold\x18\x08 \x01(\x05\x12\x1c\n\x14movement_policy_name\x18\t \x01(\t\x12\x1c\n\x14movement_policy_args\x18\n \x01(\t\x12\x12\n\nmodel_name\x18\x0b \x01(\t\x12\x12\n\nmodel_args\x18\x0c \x01(\t\x12\x1d\n\x15model_checkpoint_path\x18\r \x01(\t\x12\x30\n\x11inference_options\x18\x0e \x01(\x0b\x32\x15.ffn.InferenceOptions\x12\x1f\n\x17segmentation_output_dir\x18\x0f \x01(\t\x12\x1b\n\x13\x63heckpoint_interval\x18\x10 \x01(\x05\x12\x13\n\x0bseed_policy\x18\x11 \x01(\t\x12\x18\n\x10seed_policy_args\x18\x13 \x01(\t\x12\x33\n\x0fself_prediction\x18\x12 \x01(\x0b\x32\x1a.ffn.SelfPredictionOptions\x12\x30\n\x11\x61lignment_options\x18\x14 \x01(\x0b\x32\x15.ffn.AlignmentOptions\x12/\n\x11init_segmentation\x18\x19 \x01(\x0b\x32\x14.ffn.DecoratedVolume\"U\n\x13ResegmentationPoint\x12\x0c\n\x04id_a\x18\x01 \x01(\x04\x12\x0c\n\x04id_b\x18\x02 \x01(\x04\x12\"\n\x05point\x18\x03 \x01(\x0b\x32\x13.ffn.proto.Vector3j\"\xfc\x02\n\x15ResegmentationRequest\x12(\n\tinference\x18\x01 \x01(\x0b\x32\x15.ffn.InferenceRequest\x12(\n\x06points\x18\x02 \x03(\x0b\x32\x18.ffn.ResegmentationPoint\x12#\n\x06radius\x18\x05 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x18\n\x10output_directory\x18\x06 \x01(\t\x12\x15\n\rsubdir_digits\x18\x07 \x01(\x05\x12\x1a\n\x0fmax_retry_iters\x18\x08 \x01(\x05:\x01\x31\x12-\n\x10\x65xclusion_radius\x18\t \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x32\n\x15init_exclusion_radius\x18\x0b \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12!\n\x19segment_recovery_fraction\x18\n \x01(\x02\x12\x17\n\x0fterminate_early\x18\x0c \x01(\x08\"+\n\x0c\x43ounterValue\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03\"i\n\x0cTaskCounters\x12#\n\x08\x63ounters\x18\x01 \x03(\x0b\x32\x11.ffn.CounterValue\x12\"\n\x05point\x18\x02 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x10\n\x08\x66ilename\x18\x03 \x01(\t')
+  serialized_pb=_b('\n\x19inference/inference.proto\x12\x03\x66\x66n\x1a\x12utils/vector.proto\x1a\x18utils/bounding_box.proto\"\\\n\x0f\x44\x65\x63oratedVolume\x12\x11\n\x07volinfo\x18\x01 \x01(\tH\x00\x12\x0e\n\x04hdf5\x18\x03 \x01(\tH\x00\x12\x17\n\x0f\x64\x65\x63orator_specs\x18\x02 \x01(\tB\r\n\x0bvolume_path\"j\n\x11MaskChannelConfig\x12\x0f\n\x07\x63hannel\x18\x01 \x01(\x05\x12\x11\n\tmin_value\x18\x02 \x01(\x02\x12\x11\n\tmax_value\x18\x03 \x01(\x02\x12\x0e\n\x06values\x18\x05 \x03(\x04\x12\x0e\n\x06invert\x18\x04 \x01(\x08\"<\n\x10ImageMaskOptions\x12(\n\x08\x63hannels\x18\x01 \x03(\x0b\x32\x16.ffn.MaskChannelConfig\"a\n\x11VolumeMaskOptions\x12\"\n\x04mask\x18\x01 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12(\n\x08\x63hannels\x18\x02 \x03(\x0b\x32\x16.ffn.MaskChannelConfig\"1\n\x1b\x43oordinateExpressionOptions\x12\x12\n\nexpression\x18\x01 \x01(\t\"\xbb\x01\n\nMaskConfig\x12(\n\x06volume\x18\x01 \x01(\x0b\x32\x16.ffn.VolumeMaskOptionsH\x00\x12&\n\x05image\x18\x02 \x01(\x0b\x32\x15.ffn.ImageMaskOptionsH\x00\x12\x41\n\x15\x63oordinate_expression\x18\x03 \x01(\x0b\x32 .ffn.CoordinateExpressionOptionsH\x00\x12\x0e\n\x06invert\x18\x04 \x01(\x08\x42\x08\n\x06source\"-\n\x0bMaskConfigs\x12\x1e\n\x05masks\x18\x01 \x03(\x0b\x32\x0f.ffn.MaskConfig\"~\n\x12SegmentationSource\x12\x11\n\tdirectory\x18\x01 \x01(\t\x12\x11\n\tthreshold\x18\x02 \x01(\x02\x12\x10\n\x08split_cc\x18\x03 \x01(\x08\x12\x10\n\x08min_size\x18\x04 \x01(\x05\x12\x1e\n\x04mask\x18\x05 \x01(\x0b\x32\x10.ffn.MaskConfigs\"\xf8\x01\n\x10InferenceOptions\x12\x17\n\x0finit_activation\x18\x01 \x01(\x02\x12\x11\n\tpad_value\x18\x02 \x01(\x02\x12\x16\n\x0emove_threshold\x18\x03 \x01(\x02\x12\x1d\n\x15\x63onsistency_threshold\x18\x04 \x01(\x02\x12\x1c\n\x14\x64isco_seed_threshold\x18\x05 \x01(\x02\x12.\n\x11min_boundary_dist\x18\x06 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x19\n\x11segment_threshold\x18\x07 \x01(\x02\x12\x18\n\x10min_segment_size\x18\x08 \x01(\x05\"E\n\x15SelfPredictionOptions\x12\x11\n\tthreshold\x18\x01 \x01(\x02\x12\x19\n\x0eorig_threshold\x18\x02 \x01(\x02:\x01\x31\"\x97\x01\n\x10\x41lignmentOptions\x12;\n\x04type\x18\x01 \x01(\x0e\x32\x1f.ffn.AlignmentOptions.AlignType:\x0cNO_ALIGNMENT\x12\x10\n\x08save_raw\x18\x06 \x01(\x08\"4\n\tAlignType\x12\x15\n\x11UNKNOWN_ALIGNMENT\x10\x00\x12\x10\n\x0cNO_ALIGNMENT\x10\x01\"\xea\x06\n\x10InferenceRequest\x12#\n\x05image\x18\x18 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12\x12\n\nimage_mean\x18\x02 \x01(\x02\x12\x14\n\x0cimage_stddev\x18\x03 \x01(\x02\x12\x1b\n\x13reference_histogram\x18\x04 \x01(\t\x12(\n\x0fhistogram_masks\x18\x1a \x03(\x0b\x32\x0f.ffn.MaskConfig\x12\x1e\n\x05masks\x18\x05 \x03(\x0b\x32\x0f.ffn.MaskConfig\x12#\n\nseed_masks\x18\x1e \x03(\x0b\x32\x0f.ffn.MaskConfig\x12(\n\nshift_mask\x18\x06 \x01(\x0b\x32\x14.ffn.DecoratedVolume\x12(\n\x0eshift_mask_fov\x18\x16 \x01(\x0b\x32\x10.ffn.BoundingBox\x12\x18\n\x10shift_mask_scale\x18\x07 \x01(\x05\x12\x1c\n\x14shift_mask_threshold\x18\x08 \x01(\x05\x12\x1c\n\x14movement_policy_name\x18\t \x01(\t\x12\x1c\n\x14movement_policy_args\x18\n \x01(\t\x12\x12\n\nmodel_name\x18\x0b \x01(\t\x12\x12\n\nmodel_args\x18\x0c \x01(\t\x12\x1d\n\x15model_checkpoint_path\x18\r \x01(\t\x12\x15\n\nbatch_size\x18\x1b \x01(\x05:\x01\x31\x12\x1e\n\x13\x63oncurrent_requests\x18\x1c \x01(\x05:\x01\x31\x12\x30\n\x11inference_options\x18\x0e \x01(\x0b\x32\x15.ffn.InferenceOptions\x12\x1f\n\x17segmentation_output_dir\x18\x0f \x01(\t\x12\x1b\n\x13\x63heckpoint_interval\x18\x10 \x01(\x05\x12\x13\n\x0bseed_policy\x18\x11 \x01(\t\x12\x18\n\x10seed_policy_args\x18\x13 \x01(\t\x12\x33\n\x0fself_prediction\x18\x12 \x01(\x0b\x32\x1a.ffn.SelfPredictionOptions\x12\x30\n\x11\x61lignment_options\x18\x14 \x01(\x0b\x32\x15.ffn.AlignmentOptions\x12/\n\x11init_segmentation\x18\x19 \x01(\x0b\x32\x14.ffn.DecoratedVolume\"U\n\x13ResegmentationPoint\x12\x0c\n\x04id_a\x18\x01 \x01(\x04\x12\x0c\n\x04id_b\x18\x02 \x01(\x04\x12\"\n\x05point\x18\x03 \x01(\x0b\x32\x13.ffn.proto.Vector3j\"\xaa\x03\n\x15ResegmentationRequest\x12(\n\tinference\x18\x01 \x01(\x0b\x32\x15.ffn.InferenceRequest\x12(\n\x06points\x18\x02 \x03(\x0b\x32\x18.ffn.ResegmentationPoint\x12#\n\x06radius\x18\x05 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x18\n\x10output_directory\x18\x06 \x01(\t\x12\x15\n\rsubdir_digits\x18\x07 \x01(\x05\x12\x1a\n\x0fmax_retry_iters\x18\x08 \x01(\x05:\x01\x31\x12-\n\x10\x65xclusion_radius\x18\t \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x32\n\x15init_exclusion_radius\x18\x0b \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12!\n\x19segment_recovery_fraction\x18\n \x01(\x02\x12\x17\n\x0fterminate_early\x18\x0c \x01(\x08\x12,\n\x0f\x61nalysis_radius\x18\r \x01(\x0b\x32\x13.ffn.proto.Vector3j\"+\n\x0c\x43ounterValue\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\x03\"i\n\x0cTaskCounters\x12#\n\x08\x63ounters\x18\x01 \x03(\x0b\x32\x11.ffn.CounterValue\x12\"\n\x05point\x18\x02 \x01(\x0b\x32\x13.ffn.proto.Vector3j\x12\x10\n\x08\x66ilename\x18\x03 \x01(\t')
   ,
   dependencies=[utils_dot_vector__pb2.DESCRIPTOR,utils_dot_bounding__box__pb2.DESCRIPTOR,])
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
@@ -56,55 +56,13 @@ _ALIGNMENTOPTIONS_ALIGNTYPE = _descriptor.EnumDescriptor(
       name='NO_ALIGNMENT', index=1, number=1,
       options=None,
       type=None),
-    _descriptor.EnumValueDescriptor(
-      name='TRANSLATION', index=2, number=2,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='RIGID', index=3, number=3,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='SIMILARITY', index=4, number=4,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='AFFINE', index=5, number=5,
-      options=None,
-      type=None),
   ],
   containing_type=None,
   options=None,
-  serialized_start=1502,
-  serialized_end=1610,
+  serialized_start=1281,
+  serialized_end=1333,
 )
 _sym_db.RegisterEnumDescriptor(_ALIGNMENTOPTIONS_ALIGNTYPE)
-
-_ALIGNMENTOPTIONS_SHIFTFUNCTION = _descriptor.EnumDescriptor(
-  name='ShiftFunction',
-  full_name='ffn.AlignmentOptions.ShiftFunction',
-  filename=None,
-  file=DESCRIPTOR,
-  values=[
-    _descriptor.EnumValueDescriptor(
-      name='UNKNOWN_SHIFT_FUNCTION', index=0, number=0,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='MEAN', index=1, number=1,
-      options=None,
-      type=None),
-    _descriptor.EnumValueDescriptor(
-      name='MEDIAN', index=2, number=2,
-      options=None,
-      type=None),
-  ],
-  containing_type=None,
-  options=None,
-  serialized_start=1612,
-  serialized_end=1677,
-)
-_sym_db.RegisterEnumDescriptor(_ALIGNMENTOPTIONS_SHIFTFUNCTION)
 
 
 _DECORATEDVOLUME = _descriptor.Descriptor(
@@ -592,56 +550,7 @@ _ALIGNMENTOPTIONS = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='alignment_volinfo', full_name='ffn.AlignmentOptions.alignment_volinfo', index=1,
-      number=2, type=9, cpp_type=9, label=1,
-      has_default_value=False, default_value=_b("").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='scale_divisor', full_name='ffn.AlignmentOptions.scale_divisor', index=2,
-      number=3, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='reversed_fiducials', full_name='ffn.AlignmentOptions.reversed_fiducials', index=3,
-      number=4, type=8, cpp_type=7, label=1,
-      has_default_value=False, default_value=False,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='shift_function', full_name='ffn.AlignmentOptions.shift_function', index=4,
-      number=5, type=14, cpp_type=8, label=1,
-      has_default_value=True, default_value=1,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='abort_shift_threshold', full_name='ffn.AlignmentOptions.abort_shift_threshold', index=5,
-      number=9, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='max_shift', full_name='ffn.AlignmentOptions.max_shift', index=6,
-      number=7, type=5, cpp_type=1, label=1,
-      has_default_value=False, default_value=0,
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='xcorr_mode', full_name='ffn.AlignmentOptions.xcorr_mode', index=7,
-      number=8, type=9, cpp_type=9, label=1,
-      has_default_value=True, default_value=_b("full").decode('utf-8'),
-      message_type=None, enum_type=None, containing_type=None,
-      is_extension=False, extension_scope=None,
-      options=None),
-    _descriptor.FieldDescriptor(
-      name='save_raw', full_name='ffn.AlignmentOptions.save_raw', index=8,
+      name='save_raw', full_name='ffn.AlignmentOptions.save_raw', index=1,
       number=6, type=8, cpp_type=7, label=1,
       has_default_value=False, default_value=False,
       message_type=None, enum_type=None, containing_type=None,
@@ -653,7 +562,6 @@ _ALIGNMENTOPTIONS = _descriptor.Descriptor(
   nested_types=[],
   enum_types=[
     _ALIGNMENTOPTIONS_ALIGNTYPE,
-    _ALIGNMENTOPTIONS_SHIFTFUNCTION,
   ],
   options=None,
   is_extendable=False,
@@ -662,7 +570,7 @@ _ALIGNMENTOPTIONS = _descriptor.Descriptor(
   oneofs=[
   ],
   serialized_start=1182,
-  serialized_end=1677,
+  serialized_end=1333,
 )
 
 
@@ -716,119 +624,140 @@ _INFERENCEREQUEST = _descriptor.Descriptor(
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='shift_mask', full_name='ffn.InferenceRequest.shift_mask', index=6,
+      name='seed_masks', full_name='ffn.InferenceRequest.seed_masks', index=6,
+      number=30, type=11, cpp_type=10, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='shift_mask', full_name='ffn.InferenceRequest.shift_mask', index=7,
       number=6, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='shift_mask_fov', full_name='ffn.InferenceRequest.shift_mask_fov', index=7,
+      name='shift_mask_fov', full_name='ffn.InferenceRequest.shift_mask_fov', index=8,
       number=22, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='shift_mask_scale', full_name='ffn.InferenceRequest.shift_mask_scale', index=8,
+      name='shift_mask_scale', full_name='ffn.InferenceRequest.shift_mask_scale', index=9,
       number=7, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='shift_mask_threshold', full_name='ffn.InferenceRequest.shift_mask_threshold', index=9,
+      name='shift_mask_threshold', full_name='ffn.InferenceRequest.shift_mask_threshold', index=10,
       number=8, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='movement_policy_name', full_name='ffn.InferenceRequest.movement_policy_name', index=10,
+      name='movement_policy_name', full_name='ffn.InferenceRequest.movement_policy_name', index=11,
       number=9, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='movement_policy_args', full_name='ffn.InferenceRequest.movement_policy_args', index=11,
+      name='movement_policy_args', full_name='ffn.InferenceRequest.movement_policy_args', index=12,
       number=10, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='model_name', full_name='ffn.InferenceRequest.model_name', index=12,
+      name='model_name', full_name='ffn.InferenceRequest.model_name', index=13,
       number=11, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='model_args', full_name='ffn.InferenceRequest.model_args', index=13,
+      name='model_args', full_name='ffn.InferenceRequest.model_args', index=14,
       number=12, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='model_checkpoint_path', full_name='ffn.InferenceRequest.model_checkpoint_path', index=14,
+      name='model_checkpoint_path', full_name='ffn.InferenceRequest.model_checkpoint_path', index=15,
       number=13, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='inference_options', full_name='ffn.InferenceRequest.inference_options', index=15,
+      name='batch_size', full_name='ffn.InferenceRequest.batch_size', index=16,
+      number=27, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=1,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='concurrent_requests', full_name='ffn.InferenceRequest.concurrent_requests', index=17,
+      number=28, type=5, cpp_type=1, label=1,
+      has_default_value=True, default_value=1,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
+    _descriptor.FieldDescriptor(
+      name='inference_options', full_name='ffn.InferenceRequest.inference_options', index=18,
       number=14, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='segmentation_output_dir', full_name='ffn.InferenceRequest.segmentation_output_dir', index=16,
+      name='segmentation_output_dir', full_name='ffn.InferenceRequest.segmentation_output_dir', index=19,
       number=15, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='checkpoint_interval', full_name='ffn.InferenceRequest.checkpoint_interval', index=17,
+      name='checkpoint_interval', full_name='ffn.InferenceRequest.checkpoint_interval', index=20,
       number=16, type=5, cpp_type=1, label=1,
       has_default_value=False, default_value=0,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='seed_policy', full_name='ffn.InferenceRequest.seed_policy', index=18,
+      name='seed_policy', full_name='ffn.InferenceRequest.seed_policy', index=21,
       number=17, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='seed_policy_args', full_name='ffn.InferenceRequest.seed_policy_args', index=19,
+      name='seed_policy_args', full_name='ffn.InferenceRequest.seed_policy_args', index=22,
       number=19, type=9, cpp_type=9, label=1,
       has_default_value=False, default_value=_b("").decode('utf-8'),
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='self_prediction', full_name='ffn.InferenceRequest.self_prediction', index=20,
+      name='self_prediction', full_name='ffn.InferenceRequest.self_prediction', index=23,
       number=18, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='alignment_options', full_name='ffn.InferenceRequest.alignment_options', index=21,
+      name='alignment_options', full_name='ffn.InferenceRequest.alignment_options', index=24,
       number=20, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
     _descriptor.FieldDescriptor(
-      name='init_segmentation', full_name='ffn.InferenceRequest.init_segmentation', index=22,
+      name='init_segmentation', full_name='ffn.InferenceRequest.init_segmentation', index=25,
       number=25, type=11, cpp_type=10, label=1,
       has_default_value=False, default_value=None,
       message_type=None, enum_type=None, containing_type=None,
@@ -846,8 +775,8 @@ _INFERENCEREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=1680,
-  serialized_end=2462,
+  serialized_start=1336,
+  serialized_end=2210,
 )
 
 
@@ -891,8 +820,8 @@ _RESEGMENTATIONPOINT = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2464,
-  serialized_end=2549,
+  serialized_start=2212,
+  serialized_end=2297,
 )
 
 
@@ -973,6 +902,13 @@ _RESEGMENTATIONREQUEST = _descriptor.Descriptor(
       message_type=None, enum_type=None, containing_type=None,
       is_extension=False, extension_scope=None,
       options=None),
+    _descriptor.FieldDescriptor(
+      name='analysis_radius', full_name='ffn.ResegmentationRequest.analysis_radius', index=10,
+      number=13, type=11, cpp_type=10, label=1,
+      has_default_value=False, default_value=None,
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      options=None),
   ],
   extensions=[
   ],
@@ -985,8 +921,8 @@ _RESEGMENTATIONREQUEST = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2552,
-  serialized_end=2932,
+  serialized_start=2300,
+  serialized_end=2726,
 )
 
 
@@ -1023,8 +959,8 @@ _COUNTERVALUE = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2934,
-  serialized_end=2977,
+  serialized_start=2728,
+  serialized_end=2771,
 )
 
 
@@ -1068,8 +1004,8 @@ _TASKCOUNTERS = _descriptor.Descriptor(
   extension_ranges=[],
   oneofs=[
   ],
-  serialized_start=2979,
-  serialized_end=3084,
+  serialized_start=2773,
+  serialized_end=2878,
 )
 
 _DECORATEDVOLUME.oneofs_by_name['volume_path'].fields.append(
@@ -1097,12 +1033,11 @@ _MASKCONFIGS.fields_by_name['masks'].message_type = _MASKCONFIG
 _SEGMENTATIONSOURCE.fields_by_name['mask'].message_type = _MASKCONFIGS
 _INFERENCEOPTIONS.fields_by_name['min_boundary_dist'].message_type = utils_dot_vector__pb2._VECTOR3J
 _ALIGNMENTOPTIONS.fields_by_name['type'].enum_type = _ALIGNMENTOPTIONS_ALIGNTYPE
-_ALIGNMENTOPTIONS.fields_by_name['shift_function'].enum_type = _ALIGNMENTOPTIONS_SHIFTFUNCTION
 _ALIGNMENTOPTIONS_ALIGNTYPE.containing_type = _ALIGNMENTOPTIONS
-_ALIGNMENTOPTIONS_SHIFTFUNCTION.containing_type = _ALIGNMENTOPTIONS
 _INFERENCEREQUEST.fields_by_name['image'].message_type = _DECORATEDVOLUME
 _INFERENCEREQUEST.fields_by_name['histogram_masks'].message_type = _MASKCONFIG
 _INFERENCEREQUEST.fields_by_name['masks'].message_type = _MASKCONFIG
+_INFERENCEREQUEST.fields_by_name['seed_masks'].message_type = _MASKCONFIG
 _INFERENCEREQUEST.fields_by_name['shift_mask'].message_type = _DECORATEDVOLUME
 _INFERENCEREQUEST.fields_by_name['shift_mask_fov'].message_type = utils_dot_bounding__box__pb2._BOUNDINGBOX
 _INFERENCEREQUEST.fields_by_name['inference_options'].message_type = _INFERENCEOPTIONS
@@ -1115,6 +1050,7 @@ _RESEGMENTATIONREQUEST.fields_by_name['points'].message_type = _RESEGMENTATIONPO
 _RESEGMENTATIONREQUEST.fields_by_name['radius'].message_type = utils_dot_vector__pb2._VECTOR3J
 _RESEGMENTATIONREQUEST.fields_by_name['exclusion_radius'].message_type = utils_dot_vector__pb2._VECTOR3J
 _RESEGMENTATIONREQUEST.fields_by_name['init_exclusion_radius'].message_type = utils_dot_vector__pb2._VECTOR3J
+_RESEGMENTATIONREQUEST.fields_by_name['analysis_radius'].message_type = utils_dot_vector__pb2._VECTOR3J
 _TASKCOUNTERS.fields_by_name['counters'].message_type = _COUNTERVALUE
 _TASKCOUNTERS.fields_by_name['point'].message_type = utils_dot_vector__pb2._VECTOR3J
 DESCRIPTOR.message_types_by_name['DecoratedVolume'] = _DECORATEDVOLUME

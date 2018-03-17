@@ -108,8 +108,7 @@ def get_canvas(point, radius, runner):
                   point[2], point[1], point[0], corner, end)
     return None, None
 
-  return runner.make_canvas(corner, subvol_size, keep_history=True,
-                            relabel_init_ids=False)
+  return runner.make_canvas(corner, subvol_size, keep_history=True)
 
 
 def process_point(request, runner, point_num):
@@ -120,7 +119,6 @@ def process_point(request, runner, point_num):
     runner: inference Runner object
     point_num: index of the point of interest within the proto
   """
-  runner.counters.reset()
   with timer_counter(runner.counters, 'resegmentation'):
     target_path = get_target_path(request, point_num)
     if target_path is None:
@@ -135,31 +133,36 @@ def process_point(request, runner, point_num):
       logging.warning('Could not get a canvas object.')
       return
 
-    def unalign_image(img):
-      return alignment.align_and_crop(canvas.corner_zyx,
-                                      img,
-                                      alignment.corner,
-                                      alignment.size,
-                                      forward=False)
+    def unalign_prob(prob):
+      return alignment.align_and_crop(
+          canvas.corner_zyx,
+          prob,
+          alignment.corner,
+          alignment.size,
+          forward=False)
 
     is_shift = (canvas.restrictor is not None and
                 np.any(canvas.restrictor.shift_mask))
     is_endpoint = not curr.HasField('id_b')
 
-    seg_a = canvas.segmentation == curr.id_a
+    seg_a = canvas.segmentation == canvas.local_id(curr.id_a)
     size_a = np.sum(seg_a)
 
     if is_endpoint:
       size_b = -1
-      todo = [(seg_a, size_a)]
+      todo = [seg_a]
     else:
-      seg_b = canvas.segmentation == curr.id_b
+      seg_b = canvas.segmentation == canvas.local_id(curr.id_b)
       size_b = np.sum(seg_b)
-      todo = [(seg_a, size_a), (seg_b, size_b)]
+      todo = [seg_a, seg_b]
 
     if size_a == 0 or size_b == 0:
-      logging.warning('Segments not found in input. Present values are: %r.',
+      logging.warning('Segments (%d, %d) local ids (%d, %d) not found in input '
+                      'at %r.  Current values are: %r.',
+                      curr.id_a, curr.id_b, canvas.local_id(curr.id_a),
+                      canvas.local_id(curr.id_b), point,
                       np.unique(canvas.segmentation))
+      canvas._deregister_client()  # pylint:disable=protected-access
       return
 
     if is_endpoint:
@@ -188,8 +191,19 @@ def process_point(request, runner, point_num):
     histories = []
     start_points = [[], []]
 
+    if request.HasField('analysis_radius'):
+      ar = request.analysis_radius
+      analysis_box = bounding_box.BoundingBox(
+          start=(radius[2] - ar.x,
+                 radius[1] - ar.y,
+                 radius[0] - ar.z),
+          size=(2 * ar.x + 1, 2 * ar.y + 1, 2 * ar.z + 1))
+    else:
+      analysis_box = bounding_box.BoundingBox(
+          (0, 0, 0), canvas.image.shape[::-1])
+
     options = request.inference.inference_options
-    for i, (seg, start_size) in enumerate(todo):
+    for i, seg in enumerate(todo):
       logging.info('processing object %d', i)
 
       with timer_counter(canvas.counters, 'edt'):
@@ -202,7 +216,7 @@ def process_point(request, runner, point_num):
         dists[-canvas.margin[0]:, :, :] = 0
         dists[:, -canvas.margin[1]:, :] = 0
         dists[:, :, -canvas.margin[2]:] = 0
-        logging.info('EDT computation done')
+        canvas.log_info('EDT computation done')
 
       # Optionally exclude a region around the decision point from seeding.
       if request.HasField('init_exclusion_radius'):
@@ -219,7 +233,8 @@ def process_point(request, runner, point_num):
         if not seg[z0, y0, x0]:
           continue
 
-        logging.info('.. starting segmentation at (xyz): %d %d %d', x0, y0, z0)
+        canvas.log_info('.. starting segmentation at (xyz): %d %d %d',
+                        x0, y0, z0)
         canvas.segment_at((z0, y0, x0))
         seg_prob = expit(canvas.seed)
         start_points[i].append((x0, y0, z0))
@@ -227,7 +242,12 @@ def process_point(request, runner, point_num):
         # Check if we recovered an acceptable fraction of the initial segment
         # in which the seed was located.
         recovered = True
-        segmented_voxels = np.sum((seg_prob >= options.segment_threshold) & seg)
+
+        crop_seg = seg[analysis_box.to_slice()]
+        crop_prob = seg_prob[analysis_box.to_slice()]
+        start_size = np.sum(crop_seg)
+        segmented_voxels = np.sum((crop_prob >= options.segment_threshold) &
+                                  crop_seg)
         if request.segment_recovery_fraction > 0:
           if segmented_voxels / start_size >= request.segment_recovery_fraction:
             break
@@ -240,7 +260,7 @@ def process_point(request, runner, point_num):
       if seg_prob is not None:
         qprob = storage.quantize_probability(seg_prob)
         raw_probs.append(qprob)
-        probs.append(unalign_image(qprob))
+        probs.append(unalign_prob(qprob))
         deletes.append(np.array(canvas.history_deleted))
         histories.append(np.array(canvas.history))
 
@@ -249,13 +269,16 @@ def process_point(request, runner, point_num):
           break
         if (request.segment_recovery_fraction > 0 and i == 0 and
             len(todo) > 1):
-          seg2, size2 = todo[1]
+          seg2 = todo[1]
+          crop_seg = seg2[analysis_box.to_slice()]
+          size2 = np.sum(crop_seg)
           segmented_voxels2 = np.sum(
-              (seg_prob >= options.segment_threshold) & seg2)
+              (crop_prob >= options.segment_threshold) & crop_seg)
+
           if segmented_voxels2 / size2 < request.segment_recovery_fraction:
             break
 
-  logging.info('saving results to %s', target_path)
+  canvas.log_info('saving results to %s', target_path)
   with storage.atomic_file(target_path) as fd:
     np.savez_compressed(fd,
                         probs=np.array(probs),
@@ -267,7 +290,10 @@ def process_point(request, runner, point_num):
                         counters=canvas.counters.dumps(),
                         corner_zyx=canvas.corner_zyx,
                         is_shift=is_shift)
-  logging.info('.. save complete')
+  canvas.log_info('.. save complete')
+  # Cannot `del canvas` here in Python 2 -- deleting an object referenced
+  # in a nested scope is a syntax error.
+  canvas._deregister_client()  # pylint:disable=protected-access
 
 
 def process(request, runner):

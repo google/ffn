@@ -196,13 +196,16 @@ message InferenceRequest {
   // individual masks.
   repeated MaskConfig masks = 5;
 
+  // Same as above, but for seed placement.
+  repeated MaskConfig seed_masks = 30;
+
   // 2-channel volume specifying a local (x,y) offset between slice 'z' and
   // 'z+1'.
   optional DecoratedVolume shift_mask = 6;
 
   // Field of view around the current position to consider.  A position will
   // be invalid for movement if the shift_mask volume contains shift channel
-  // values above shift_mask_threshold within this field of view.
+  // values at or above shift_mask_threshold within this field of view.
   //
   // If this is left blank, the default behavior of inference.Runner is to use
   // the input field of view of the network.
@@ -238,6 +241,13 @@ message InferenceRequest {
   optional string model_args = 12;
   optional string model_checkpoint_path = 13;
 
+  // Batch size to use during inference.
+  optional int32 batch_size = 27 [default = 1];
+
+  // Number of additional subvolumes that the runner should handle.
+  // This should be >= batch_size.
+  optional int32 concurrent_requests = 28 [default = 1];
+
   optional InferenceOptions inference_options = 14;
 
   // Directory where the segmentation results should be saved.
@@ -262,7 +272,7 @@ message InferenceRequest {
   // Initial segmentation with which to prepopulate the canvas.
   optional DecoratedVolume init_segmentation = 25;
 
-  // Next id: 27.
+  // Next id: 31.
 }
 
 message ResegmentationPoint {
@@ -316,6 +326,12 @@ message ResegmentationRequest {
   // If true, when the first segment is not successfully recovered, the
   // segmentation of the second segment is not attempted.
   optional bool terminate_early = 12;
+
+  // If not specified, same as `radius`. Defines a radius within which to
+  // compute `segment_recovery_fraction`. A typical recommended setting is:
+  //   radius - ffn_fov_radius
+  // to make the analysis less sensitive to edge effects.
+  optional proto.Vector3j analysis_radius = 13;
 }
 
 message CounterValue {
