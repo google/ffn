@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from collections import deque
 import json
+import weakref
 import numpy as np
 from scipy.special import logit
 import tensorflow as tf
@@ -114,7 +115,8 @@ class BaseMovementPolicy(object):
       scored_coords: mutable container of tuples (score, zyx coord)
       deltas: step sizes as (z,y,x)
     """
-    self.canvas = canvas
+    # TODO(mjanusz): Remove circular reference between Canvas and seed policies.
+    self.canvas = weakref.proxy(canvas)
     self.scored_coords = scored_coords
     self.deltas = np.array(deltas)
 
@@ -243,7 +245,7 @@ class MovementRestrictor(object):
   """Restricts the movement of the FFN FoV."""
 
   def __init__(self, mask=None, shift_mask=None, shift_mask_fov=None,
-               shift_mask_threshold=4, shift_mask_scale=1):
+               shift_mask_threshold=4, shift_mask_scale=1, seed_mask=None):
     """Initializes the restrictor.
 
     Args:
@@ -260,6 +262,7 @@ class MovementRestrictor(object):
           of the shift mask are compared to the data set processed by the FFN
     """
     self.mask = mask
+    self.seed_mask = seed_mask
 
     self._shift_mask_scale = shift_mask_scale
     self.shift_mask = None
@@ -270,6 +273,20 @@ class MovementRestrictor(object):
       assert shift_mask_fov is not None
       self._shift_mask_fov_pre_offset = shift_mask_fov.start[::-1]
       self._shift_mask_fov_post_offset = shift_mask_fov.end[::-1] - 1
+
+  def is_valid_seed(self, pos):
+    """Checks whether a given position is a valid seed point.
+
+    Args:
+      pos: position within the dataset as (z, y, x)
+
+    Returns:
+      True iff location is a valid seed
+    """
+    if self.seed_mask is not None and self.seed_mask[pos]:
+      return False
+
+    return True
 
   def is_valid_pos(self, pos):
     """Checks whether a given position should be segmented.

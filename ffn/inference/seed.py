@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import weakref
 
 import numpy as np
 from scipy import ndimage
@@ -45,7 +46,8 @@ class BaseSeedPolicy(object):
       **kwargs: other keyword arguments
     """
     del kwargs
-    self.canvas = canvas
+    # TODO(mjanusz): Remove circular reference between Canvas and seed policies.
+    self.canvas = weakref.proxy(canvas)
     self.coords = None
     self.idx = 0
 
@@ -135,6 +137,11 @@ class PolicyPeaks(BaseSeedPolicy):
         indices=True, min_distance=3, threshold_abs=0, threshold_rel=0)
     np.random.set_state(state)
 
+    # After skimage upgrade to 0.13.0 peak_local_max returns peaks in
+    # descending order, versus ascending order previously.  Sort ascending to
+    # maintain historic behavior.
+    idxs = np.array(sorted((z, y, x) for z, y, x in idxs))
+
     logging.info('peaks: found %d local maxima', idxs.shape[0])
     self.coords = idxs
 
@@ -146,6 +153,30 @@ class PolicyPeaks2d(BaseSeedPolicy):
   raw data (specified by z index), followed by 2d distance transform
   and peak finding to identify seed points.
   """
+
+  _SORT_CMP = dict(
+      ascending=None,
+      descending=lambda x, y: -cmp(x, y),
+  )
+
+  def __init__(self, canvas, min_distance=7, threshold_abs=2.5,
+               sort_cmp='ascending', **kwargs):
+    """Initialize settings.
+
+    Args:
+      canvas: inference Canvas object.
+      min_distance: forwarded to peak_local_max.
+      threshold_abs: forwarded to peak_local_max.
+      sort_cmp: the cmp function to use for sorting seed coordinates.
+      **kwargs: forwarded to base.
+
+    For compatibility with original version, min_distance=3, threshold_abs=0,
+    sort=False.
+    """
+    super(PolicyPeaks2d, self).__init__(canvas, **kwargs)
+    self.min_distance = min_distance
+    self.threshold_abs = threshold_abs
+    self.sort_cmp = self._SORT_CMP[sort_cmp]
 
   def _init_coords(self):
     logging.info('2d peaks: starting')
@@ -189,6 +220,9 @@ class PolicyPeaks2d(BaseSeedPolicy):
       logging.info('2d peaks: found %d local maxima at z index %d',
                    idxs.shape[0], z)
       self.coords = np.concatenate((self.coords, idxs)) if z != 0 else idxs
+
+    self.coords = np.array(
+        sorted([(z, y, x) for z, y, x in self.coords], cmp=self.sort_cmp))
 
     logging.info('2d peaks: found %d total local maxima', self.coords.shape[0])
 
