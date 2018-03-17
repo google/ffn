@@ -75,7 +75,7 @@ flags.DEFINE_string('label_volumes', None,
                     'Comma-separated list of <volume_name>:<volume_path>:'
                     '<dataset>, where volume_name need to match the '
                     '"label_volume_name" field in the input example, '
-                    'volume_path points to HDF5 volumes containing uint64 '
+                    'volume_path points to HDF5 volumes containing int64 '
                     'label data, and `dataset` is the name of the dataset '
                     'from which data will be read.')
 flags.DEFINE_string('model_name', None,
