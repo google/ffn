@@ -132,8 +132,8 @@ def save_subvolume(labels, origins, output_path, **misc_items):
                         **misc_items)
 
 
-def subvolume_path(output_dir, corner, suffix):
-  """Returns path to a file with FFN subvolume data.
+def legacy_subvolume_path(output_dir, corner, suffix):
+  """Returns an old-style path to a file with FFN subvolume data.
 
   Args:
     output_dir: directory containing subvolume data
@@ -147,17 +147,38 @@ def subvolume_path(output_dir, corner, suffix):
       '_'.join([str(x) for x in corner[::-1]]), suffix))
 
 
+def subvolume_path(output_dir, corner, suffix):
+  """Returns path to a file with FFN subvolume data.
+
+  Args:
+    output_dir: directory containing subvolume data
+    corner: (z, y, x) subvolume corner
+    suffix: file suffix
+
+  Returns:
+    subvolume file path (string)
+  """
+  return os.path.join(
+      output_dir, str(corner[2]), str(corner[1]),
+      'seg-%s.%s' % ('_'.join([str(x) for x in corner[::-1]]), suffix))
+
+
 def get_corner_from_path(path):
+  """Returns subvolume corner as (z, y, x)."""
   match = re.search(r'(\d+)_(\d+)_(\d+).npz', os.path.basename(path))
+  if match is None:
+    raise ValueError('Unrecognized path: %s' % path)
   coord = tuple([long(x) for x in match.groups()])
   return coord[::-1]
 
 
 def get_existing_corners(segmentation_dir):
   corners = []
+  # Legacy path format.
   for path in gfile.Glob(os.path.join(segmentation_dir, 'seg-*_*_*.npz')):
     corners.append(get_corner_from_path(path))
-
+  for path in gfile.Glob(os.path.join(segmentation_dir, '*/*/seg-*_*_*.npz')):
+    corners.append(get_corner_from_path(path))
   return corners
 
 
@@ -171,6 +192,14 @@ def segmentation_path(output_dir, corner):
 
 def object_prob_path(output_dir, corner):
   return subvolume_path(output_dir, corner, 'prob')
+
+
+def legacy_segmentation_path(output_dir, corner):
+  return legacy_subvolume_path(output_dir, corner, 'npz')
+
+
+def legacy_object_prob_path(output_dir, corner):
+  return legacy_subvolume_path(output_dir, corner, 'prob')
 
 
 def get_existing_subvolume_path(segmentation_dir, corner, allow_cpoint=False):
@@ -192,6 +221,10 @@ def get_existing_subvolume_path(segmentation_dir, corner, allow_cpoint=False):
   if gfile.Exists(target_path):
     return target_path
 
+  target_path = legacy_segmentation_path(segmentation_dir, corner)
+  if gfile.Exists(target_path):
+    return target_path
+
   if allow_cpoint:
     target_path = checkpoint_path(segmentation_dir, corner)
     if gfile.Exists(target_path):
@@ -203,7 +236,9 @@ def get_existing_subvolume_path(segmentation_dir, corner, allow_cpoint=False):
 def threshold_segmentation(segmentation_dir, corner, labels, threshold):
   prob_path = object_prob_path(segmentation_dir, corner)
   if not gfile.Exists(prob_path):
-    raise ValueError('Cannot find probability map %s' % prob_path)
+    prob_path = legacy_object_prob_path(segmentation_dir, corner)
+    if not gfile.Exists(prob_path):
+      raise ValueError('Cannot find probability map %s' % prob_path)
 
   with gfile.Open(prob_path, 'r') as f:
     data = np.load(f)
