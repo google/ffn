@@ -1192,9 +1192,6 @@ class Runner(object):
         self.request.segmentation_output_dir, corner)
 
     if gfile.Exists(seg_path):
-      if pyborgletinfo.RunningUnderBorglet():
-        pywrapborgletlib.BorgletLib.SetStatusMsg(
-            'Segmentation already complete; exiting.')
       return None
 
     canvas, alignment = self.make_canvas(corner, subvol_size)

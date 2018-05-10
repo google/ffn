@@ -111,8 +111,7 @@ message SegmentationSource {
 }
 
 // Configures the details of the FFN inference process. Passed to the Canvas.
-// FoV stands for 'Field of View' of the network. See tools/inference_lib.borg
-// for currently reasonable default values.
+// FoV stands for 'Field of View' of the network.
 message InferenceOptions {
   // Settings affecting how the FFN is run.
   // --------------------------------------
