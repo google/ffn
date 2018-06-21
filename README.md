@@ -32,23 +32,6 @@ versions listed above, and equipped with a Tesla P100 GPU.
 FFN networks can be trained with the `train.py` script, which expects a
 TFRecord file of coordinates at which to sample data from input volumes.
 
-## Preparing the training data
-
-There are two scripts to generate training coordinate files for
-a labeled dataset stored in HDF5 files: `compute_partitions.py` and
-`build_coordinates.py`.
-
-`compute_partitions.py` transforms the label volume into an intermediate
-volume where the value of every voxel `A` corresponds to the quantized
-fraction of voxels labeled identically to `A` within a subvolume of
-radius `lom_radius` centered at `A`. `lom_radius` should normally be
-set to `(fov_size + deltas) // 2` (where `fov_size` and `deltas` are
-FFN model settings). Every such quantized fraction is called a *partition*.
-
-`build_coordinates.py` uses the partition volume from the previous step
-to produce a TFRecord file of coordinates in which every partition is
-represented approximately equally frequently.
-
 ## Sample data
 
 We provide a sample coordinate file for the FIB-25 `validation1` volume
@@ -66,7 +49,43 @@ You will also need to create a local copy of the labels and image with:
   gsutil rsync -r -x ".*.gz" gs://ffn-flyem-fib25/ third_party/neuroproof_examples
 ```
 
-You can then start training the FFN with:
+## Preparing the training data
+
+There are two scripts to generate training coordinate files for
+a labeled dataset stored in HDF5 files: `compute_partitions.py` and
+`build_coordinates.py`.
+
+`compute_partitions.py` transforms the label volume into an intermediate
+volume where the value of every voxel `A` corresponds to the quantized
+fraction of voxels labeled identically to `A` within a subvolume of
+radius `lom_radius` centered at `A`. `lom_radius` should normally be
+set to `(fov_size // 2) + deltas` (where `fov_size` and `deltas` are
+FFN model settings). Every such quantized fraction is called a *partition*.
+Sample invocation:
+
+```shell
+  python compute_partitions.py \
+    --input_volume third_party/neuroproof_examples/validation_sample/groundtruth.h5:stack \
+    --output_volume third_party/neuroproof_examples/validation_sample/af.h5:af \
+    --thresholds 0.025,0.05,0.075,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9 \
+    --lom_radius 24,24,24 \
+    --min_size 10000
+```
+
+`build_coordinates.py` uses the partition volume from the previous step
+to produce a TFRecord file of coordinates in which every partition is
+represented approximately equally frequently. Sample invocation:
+
+```shell
+  python build_coordinates.py \
+     --partition_volumes valdation1:third_party/neuroproof_examples/validation_sample/af.h5:af \
+     --coordinate_output third_party/neuroproof_examples/validation_sample/tf_record_file \
+     --margin 24,24,24
+```
+
+## Running training
+
+Once the coordinate files are ready, you can start training the FFN with:
 
 ```shell
   python train.py \
