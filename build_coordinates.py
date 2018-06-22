@@ -31,7 +31,8 @@ flags.DEFINE_string('coordinate_output', None,
 flags.DEFINE_list('margin', None, '(z, y, x) tuple specifying the '
                   'number of voxels adjacent to the border of the volume to '
                   'exclude from sampling. This should normally be set to the '
-                  'radius of the FFN training FoV (i.e. network FoV + steps ')
+                  'radius of the FFN training FoV (i.e. network FoV radius '
+                  '+ deltas.')
 
 
 IGNORE_PARTITION = 255
