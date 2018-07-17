@@ -27,6 +27,11 @@ from google3.research.neuromancer.segmentation.ffn import resegmentation_pb2
 from google3.research.neuromancer.segmentation.ffn import storage
 from google3.research.neuromancer.segmentation.python import pywrapsegment_util
 
+try:
+  long        # Python 2
+except NameError:
+  long = int  # Python 3
+
 
 class InvalidBaseSegmentatonError(Exception):
   pass
