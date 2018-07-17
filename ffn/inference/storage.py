@@ -34,6 +34,11 @@ from . import align
 from . import segmentation
 from ..utils import bounding_box
 
+try:
+  long        # Python 2
+except NameError:
+  long = int  # Python 3
+
 OriginInfo = namedtuple('OriginInfo', ['start_zyx', 'iters', 'walltime_sec'])
 
 
