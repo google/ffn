@@ -125,6 +125,7 @@ def save_subvolume(labels, origins, output_path, **misc_items):
         in the output file
   """
   seg = segmentation.reduce_id_bits(labels)
+  gfile.MakeDirs(os.path.dirname(output_path))
   with atomic_file(output_path) as fd:
     np.savez_compressed(fd,
                         segmentation=seg,
