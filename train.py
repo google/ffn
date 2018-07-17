@@ -90,7 +90,7 @@ flags.DEFINE_string('model_args', None,
 flags.DEFINE_string('train_dir', '/tmp',
                     'Path where checkpoints and other data will be saved.')
 flags.DEFINE_string('master', '', 'Network address of the master.')
-flags.DEFINE_integer('batch_size', 64, 'Number of images in a batch.')
+flags.DEFINE_integer('batch_size', 4, 'Number of images in a batch.')
 flags.DEFINE_integer('task', 0, 'Task id of the replica running the training.')
 flags.DEFINE_integer('ps_tasks', 0, 'Number of tasks in the ps job.')
 flags.DEFINE_integer('max_steps', 10000, 'Number of steps to train for.')
