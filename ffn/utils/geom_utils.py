@@ -17,6 +17,11 @@
 import numpy
 from . import vector_pb2
 
+try:
+  long        # Python 2
+except NameError:
+  long = int  # Python 3
+
 
 def ToVector3j(*args):
   """Converts from *args to Vector3j.
