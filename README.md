@@ -78,7 +78,7 @@ represented approximately equally frequently. Sample invocation:
 
 ```shell
   python build_coordinates.py \
-     --partition_volumes valdation1:third_party/neuroproof_examples/validation_sample/af.h5:af \
+     --partition_volumes validation1:third_party/neuroproof_examples/validation_sample/af.h5:af \
      --coordinate_output third_party/neuroproof_examples/validation_sample/tf_record_file \
      --margin 24,24,24
 ```
