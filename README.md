@@ -27,23 +27,6 @@ Tesla P100 GPU.
 FFN networks can be trained with the `train.py` script, which expects a
 TFRecord file of coordinates at which to sample data from input volumes.
 
-## Sample data
-
-We provide a sample coordinate file for the FIB-25 `validation1` volume
-included in `third_party`. Due to its size, that file is hosted in
-Google Cloud Storage. If you haven't used it before, you will need to
-install the Google Cloud SDK and set it up with:
-
-```shell
-  gcloud auth application-default login
-```
-
-You will also need to create a local copy of the labels and image with:
-
-```shell
-  gsutil rsync -r -x ".*.gz" gs://ffn-flyem-fib25/ third_party/neuroproof_examples
-```
-
 ## Preparing the training data
 
 There are two scripts to generate training coordinate files for
@@ -78,6 +61,23 @@ represented approximately equally frequently. Sample invocation:
      --margin 24,24,24
 ```
 
+## Sample data
+
+We provide a sample coordinate file for the FIB-25 `validation1` volume
+included in `third_party`. Due to its size, that file is hosted in
+Google Cloud Storage. If you haven't used it before, you will need to
+install the Google Cloud SDK and set it up with:
+
+```shell
+  gcloud auth application-default login
+```
+
+You will also need to create a local copy of the labels and image with:
+
+```shell
+  gsutil rsync -r -x ".*.gz" gs://ffn-flyem-fib25/ third_party/neuroproof_examples
+```
+
 ## Running training
 
 Once the coordinate files are ready, you can start training the FFN with:
@@ -99,6 +99,10 @@ for best results, particularly when using the FFN interactively in a Jupyter
 notebook. Training the FFN as configured above requires a GPU with 12 GB of RAM.
 You can reduce the batch size, model depth, `fov_size`, or number of features in
 the convolutional layers to reduce the memory usage.
+
+The training script is not configured for multi-GPU or distributed training.
+For instructions on how to set this up, see the documentation on
+[Distributed TensorFlow](https://www.tensorflow.org/deploy/distributed#replicated_training).
 
 # Inference
 
