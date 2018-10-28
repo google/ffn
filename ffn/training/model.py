@@ -71,9 +71,6 @@ class FFNModel(object):
             continue
           self.shifts.append((dx, dy, dz))
 
-    # Mask identifying valid examples within the batch. Only valid examples
-    # contribute to the loss and see object mask updates.
-    self.offset_label = tf.placeholder(tf.string, name='offset_label')
     self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # The seed is always a placeholder which is fed externally from the
@@ -178,9 +175,7 @@ class FFNModel(object):
     self._images.append(image)
 
   def add_summaries(self, max_images=4):
-    tf.contrib.deprecated.image_summary(
-        'state/' + self.offset_label, tf.concat(self._images, 2),
-        max_images=max_images)
+    pass
 
   def update_seed(self, seed, update):
     """Updates the initial 'seed' with 'update'."""

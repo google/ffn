@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc.
+# Copyright 2017-2018 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -197,6 +197,7 @@ class EvalTracker(object):
     zyx = list(labels.shape[1:-1])
     selector = [0, slice(None), slice(None), slice(None), 0]
     selector[slice_axis + 1] = zyx[slice_axis] // 2
+    selector = tuple(selector)
 
     del zyx[slice_axis]
     h, w = zyx
@@ -624,88 +625,88 @@ def train_ffn(model_cls, **model_kwargs):
       if FLAGS.task == 0:
         save_flags()
 
-      # Start supervisor.
-      sv = tf.train.Supervisor(
-          logdir=FLAGS.train_dir,
+      summary_writer = None
+      saver = tf.train.Saver(keep_checkpoint_every_n_hours=0.25)
+      scaffold = tf.train.Scaffold(saver=saver)
+      with tf.train.MonitoredTrainingSession(
+          master=FLAGS.master,
           is_chief=(FLAGS.task == 0),
-          saver=model.saver,
-          summary_op=None,
-          save_summaries_secs=FLAGS.summary_rate_secs,
-          save_model_secs=300,
-          recovery_wait_secs=5)
-      sess = sv.prepare_or_wait_for_session(
-          FLAGS.master,
+          save_summaries_steps=None,
+          save_checkpoint_secs=300,
           config=tf.ConfigProto(
-              log_device_placement=False, allow_soft_placement=True))
-      eval_tracker.sess = sess
+              log_device_placement=False, allow_soft_placement=True),
+          checkpoint_dir=FLAGS.train_dir,
+          scaffold=scaffold) as sess:
 
-      if FLAGS.task > 0:
-        # To avoid early instabilities when using multiple replicas, we use
-        # a launch schedule where new replicas are brought online gradually.
-        logging.info('Delaying replica start.')
-        while True:
-          if (int(sess.run(model.global_step)) >= FLAGS.replica_step_delay *
-              FLAGS.task):
-            break
-          time.sleep(5.0)
+        eval_tracker.sess = sess
+        step = int(sess.run(model.global_step))
 
-      fov_shifts = list(model.shifts)  # x, y, z
-      if FLAGS.shuffle_moves:
-        random.shuffle(fov_shifts)
-
-      policy_map = {
-          'fixed': partial(fixed_offsets, fov_shifts=fov_shifts),
-          'max_pred_moves': max_pred_offsets
-      }
-      batch_it = get_batch(lambda: sess.run(load_data_ops),
-                           eval_tracker, model, FLAGS.batch_size,
-                           policy_map[FLAGS.fov_policy])
-
-      step = 0
-      t_last = time.time()
-
-      while step < FLAGS.max_steps:
-        # Run summaries periodically.
-        t_curr = time.time()
-        if t_curr - t_last > FLAGS.summary_rate_secs and FLAGS.task == 0:
-          summ_op = merge_summaries_op
-          t_last = t_curr
+        if FLAGS.task > 0:
+          # To avoid early instabilities when using multiple replicas, we use
+          # a launch schedule where new replicas are brought online gradually.
+          logging.info('Delaying replica start.')
+          while step < FLAGS.replica_step_delay * FLAGS.task:
+            time.sleep(5.0)
+            step = int(sess.run(model.global_step))
         else:
-          summ_op = None
+          summary_writer = tf.summary.FileWriterCache.get(FLAGS.train_dir)
+          summary_writer.add_session_log(
+              tf.summary.SessionLog(status=tf.summary.SessionLog.START), step)
 
-        seed, patches, labels, weights = next(batch_it)
+        fov_shifts = list(model.shifts)  # x, y, z
+        if FLAGS.shuffle_moves:
+          random.shuffle(fov_shifts)
 
-        summaries = []
-        updated_seed, step, summ = run_training_step(
-            sess, model, summ_op,
-            feed_dict={
-                model.loss_weights: weights,
-                model.labels: labels,
-                model.offset_label: 'off',
-                model.input_patches: patches,
-                model.input_seed: seed,
-            })
+        policy_map = {
+            'fixed': partial(fixed_offsets, fov_shifts=fov_shifts),
+            'max_pred_moves': max_pred_offsets
+        }
+        batch_it = get_batch(lambda: sess.run(load_data_ops),
+                             eval_tracker, model, FLAGS.batch_size,
+                             policy_map[FLAGS.fov_policy])
 
-        # Save prediction results in the original seed array so that
-        # they can be used in subsequent steps.
-        mask.update_at(seed, (0, 0, 0), updated_seed)
+        t_last = time.time()
 
-        if summ is not None:
-          summaries.append(tf.Summary.FromString(summ))
+        while not sess.should_stop() and step < FLAGS.max_steps:
+          # Run summaries periodically.
+          t_curr = time.time()
+          if t_curr - t_last > FLAGS.summary_rate_secs and FLAGS.task == 0:
+            summ_op = merge_summaries_op
+            t_last = t_curr
+          else:
+            summ_op = None
 
-        # Record summaries.
-        if FLAGS.task == 0 and summ_op is not None:
-          # Compute a loss over the whole training patch (i.e. more than a
-          # single-step field of view of the network). This quantifies the
-          # quality of the final object mask.
-          logging.info('Saving summaries.')
-          summ = tf.Summary()
-          summ.value.extend(eval_tracker.get_summaries())
-          eval_tracker.reset()
+          seed, patches, labels, weights = next(batch_it)
 
-          for s in summaries:
-            summ.value.extend(s.value)
-          sv.summary_computed(sess, summ, step)
+          updated_seed, step, summ = run_training_step(
+              sess, model, summ_op,
+              feed_dict={
+                  model.loss_weights: weights,
+                  model.labels: labels,
+                  model.input_patches: patches,
+                  model.input_seed: seed,
+              })
+
+          # Save prediction results in the original seed array so that
+          # they can be used in subsequent steps.
+          mask.update_at(seed, (0, 0, 0), updated_seed)
+
+          # Record summaries.
+          if summ is not None:
+            logging.info('Saving summaries.')
+            summ = tf.Summary.FromString(summ)
+
+            # Compute a loss over the whole training patch (i.e. more than a
+            # single-step field of view of the network). This quantifies the
+            # quality of the final object mask.
+            summ.value.extend(eval_tracker.get_summaries())
+            eval_tracker.reset()
+
+            assert summary_writer is not None
+            summary_writer.add_summary(summ, step)
+
+      if summary_writer is not None:
+        summary_writer.flush()
 
 
 def main(argv=()):
