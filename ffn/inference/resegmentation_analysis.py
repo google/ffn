@@ -78,9 +78,9 @@ def evaluate_segmentation_result(reseg, dels, moves, delta, analysis_r,
         (moves >= corner0_zyx[np.newaxis, ...]) &
         (moves <= corner1_zyx[np.newaxis, ...]),
         axis=1)
-    result.deleted_voxels = long(np.sum(dels[mask]))
+    result.deleted_voxels = int(np.sum(dels[mask]))
 
-  result.num_voxels = long(np.sum(reseg))
+  result.num_voxels = int(np.sum(reseg))
   result.segment_a_consistency = float(
       np.sum(reseg[seg1])) / np.sum(seg1)
   result.segment_b_consistency = float(
@@ -90,7 +90,7 @@ def evaluate_segmentation_result(reseg, dels, moves, delta, analysis_r,
 def parse_resegmentation_filename(filename):
   logging.info('processing: %s', filename)
   id1, id2, x, y, z = [
-      long(t) for t in
+      int(t) for t in
       re.search(r'(\d+)-(\d+)_at_(\d+)_(\d+)_(\d+)', filename).groups()]
   return id1, id2, x, y, z
 

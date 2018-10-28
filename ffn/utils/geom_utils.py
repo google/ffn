@@ -40,7 +40,7 @@ def ToVector3j(*args):
 
   if isinstance(seq, vector_pb2.Vector3j): return seq
   if isinstance(seq, numpy.ndarray) and seq.dtype.kind in 'iu':
-    seq = [long(s) for s in seq]
+    seq = [int(s) for s in seq]
   if len(seq) != 3:
     raise ValueError('Expected three ints, a 3-sequence of ints, or a Vector3j')
 

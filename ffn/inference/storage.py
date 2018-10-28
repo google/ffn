@@ -169,7 +169,7 @@ def get_corner_from_path(path):
   match = re.search(r'(\d+)_(\d+)_(\d+).npz', os.path.basename(path))
   if match is None:
     raise ValueError('Unrecognized path: %s' % path)
-  coord = tuple([long(x) for x in match.groups()])
+  coord = tuple([int(x) for x in match.groups()])
   return coord[::-1]
 
 
