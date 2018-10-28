@@ -13,19 +13,14 @@ This is not an official Google product.
 
 # Installation
 
-No installation is required, but please ensure that the following dependencies
-are available on your system:
+No installation is required. To install the necessary dependencies, run:
 
-- skimage >= 0.11.0
-- scipy >= 0.15.1
-- numpy >= 1.11.1
-- tensorflow >= 1.4.0
-- h5py >= 2.7.0
-- PIL >= 1.1.7
-- absl-py >= 0.1.4
+```shell
+  pip install -r requirements.txt
+```
 
-The code has been tested on an Ubuntu 16.04.3 LTS system with the library
-versions listed above, and equipped with a Tesla P100 GPU.
+The code has been tested on an Ubuntu 16.04.3 LTS system equipped with a
+Tesla P100 GPU.
 
 # Training
 
