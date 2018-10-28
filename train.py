@@ -252,8 +252,11 @@ class EvalTracker(object):
   def get_summaries(self):
     """Gathers tensorflow summaries into single list."""
 
-    precision = self.tp / (self.tp + self.fp)
-    recall = self.tp / (self.tp + self.fn)
+    if not self.total_voxels:
+      return []
+
+    precision = self.tp / max(self.tp + self.fp, 1)
+    recall = self.tp / max(self.tp + self.fn, 1)
 
     for images in self.images_xy, self.images_xz, self.images_yz:
       for i, summary in enumerate(images):
@@ -276,7 +279,7 @@ class EvalTracker(object):
             tf.Summary.Value(tag='eval/recall',
                              simple_value=recall),
             tf.Summary.Value(tag='eval/specificity',
-                             simple_value=self.tn / (self.tn + self.fp)),
+                             simple_value=self.tn / max(self.tn + self.fp, 1)),
             tf.Summary.Value(tag='eval/f1',
                              simple_value=(2.0 * precision * recall /
                                            (precision + recall)))
