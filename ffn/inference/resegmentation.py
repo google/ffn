@@ -35,6 +35,7 @@ from tensorflow import gfile
 
 from . import storage
 from .inference_utils import timer_counter
+from ..utils import bounding_box
 
 
 def get_starting_location(dists, exclusion_radius):

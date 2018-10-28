@@ -88,7 +88,7 @@ def load_mask(mask_configs, box, lom_diam_zyx):
   if mask_configs is None:
     return None
 
-  mask = storage.build_mask(self.mask_config.masks, box.start[::-1],
+  mask = storage.build_mask(mask_configs.masks, box.start[::-1],
                             box.size[::-1])
   svt = _summed_volume_table(mask)
   mask = _query_summed_volume(svt, lom_diam_zyx) >= 1
