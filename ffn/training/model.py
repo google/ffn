@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import tensorflow as tf
 
-from tensorflow.python.util import deprecation
 from . import optimizer
 
 
@@ -55,7 +54,7 @@ class FFNModel(object):
   # TF op to call to perform loss optimization on the model.
   train_op = None
 
-  def __init__(self, deltas, batch_size=None):
+  def __init__(self, deltas, batch_size=None, define_global_step=True):
     assert self.dim is not None
 
     self.deltas = deltas
@@ -71,7 +70,8 @@ class FFNModel(object):
             continue
           self.shifts.append((dx, dy, dz))
 
-    self.global_step = tf.Variable(0, name='global_step', trainable=False)
+    if define_global_step:
+      self.global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # The seed is always a placeholder which is fed externally from the
     # training/inference drivers.
@@ -84,6 +84,8 @@ class FFNModel(object):
     # Optional. Provides per-pixel weights with which the loss is multiplied.
     # If specified, should have the same shape as self.labels.
     self.loss_weights = None
+
+    self.logits = None  # type: tf.Operation
 
     # List of image tensors to save in summaries. The images are concatenated
     # along the X axis.
@@ -150,23 +152,19 @@ class FFNModel(object):
                                           +max_gradient_entry_mag), v)
                         for g, v, in grads_and_vars]
 
-    # TODO(b/34707785): Hopefully remove need for these deprecated calls.  Let
-    # one warning through so that we have some (low) possibility of noticing if
-    # the message changes.
     trainables = tf.trainable_variables()
     if trainables:
-      var = trainables[0]
-      tf.contrib.deprecated.histogram_summary(var.op.name, var)
-    with deprecation.silence():
-      for var in trainables[1:]:
-        tf.contrib.deprecated.histogram_summary(var.op.name, var)
-      for grad, var in grads_and_vars:
-        tf.contrib.deprecated.histogram_summary(
-            'gradients/' + var.op.name, grad)
+      for var in trainables:
+        tf.summary.histogram(var.name.replace(':0', ''), var)
+    for grad, var in grads_and_vars:
+      tf.summary.histogram(
+          'gradients/%s' % var.name.replace(':0', ''), grad)
 
-    self.train_op = opt.apply_gradients(grads_and_vars,
-                                        global_step=self.global_step,
-                                        name='train')
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+      self.train_op = opt.apply_gradients(grads_and_vars,
+                                          global_step=self.global_step,
+                                          name='train')
 
   def show_center_slice(self, image, sigmoid=True):
     image = image[:, image.get_shape().dims[1] // 2, :, :, :]
@@ -174,7 +172,7 @@ class FFNModel(object):
       image = tf.sigmoid(image)
     self._images.append(image)
 
-  def add_summaries(self, max_images=4):
+  def add_summaries(self):
     pass
 
   def update_seed(self, seed, update):
