@@ -32,6 +32,12 @@ import skimage.feature
 
 from . import storage
 
+try:
+    cmp             # Python 2
+except NameError:
+    def cmp(x, y):  # Python 3
+        return (x > y) - (x < y)
+
 
 class BaseSeedPolicy(object):
   """Base class for seed policies."""
