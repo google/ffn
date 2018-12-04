@@ -410,7 +410,7 @@ def load_segmentation(segmentation_dir, corner, allow_cpoint=False,
     raise ValueError('Segmentation not found, %s, %r.' %
                      (segmentation_dir, corner))
 
-  with gfile.Open(target_path, 'r') as f:
+  with gfile.Open(target_path, 'rb') as f:
     data = np.load(f)
     if 'segmentation' in data:
       seg = data['segmentation']
