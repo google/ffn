@@ -29,6 +29,7 @@ class Base(object):
     self.index = 0
     self.batch = 1
     self.apply_equivs = False
+    self.locations = None
 
     self.set_init_state()
 
@@ -39,7 +40,7 @@ class Base(object):
     with self.viewer.config_state.txn() as s:
       s.status_messages['status'] = msg
 
-  def update_segments(self, segments, layer='seg'):
+  def update_segments(self, segments, loc=None, layer='seg'):
     s = copy.deepcopy(self.viewer.state)
     l = s.layers[layer]
     l.segments = segments
@@ -50,6 +51,9 @@ class Base(object):
       l.equivalences.clear()
       for a in self.todo[self.index:self.index + self.batch]:
         l.equivalences.union(*a)
+
+    if loc is not None:
+      s.navigation.pose.position.voxel_coordinates = loc
 
     self.viewer.set_state(s)
 
@@ -86,7 +90,11 @@ class Base(object):
     return ''
 
   def update_batch(self, update=True):
-    self.update_segments(self.list_segments())
+    if self.batch == 1 and self.locations is not None:
+      loc = self.locations[self.index]
+    else:
+      loc = None
+    self.update_segments(self.list_segments(), loc)
     self.update_msg('index:%d/%d  batch:%d  %s' % (self.index, len(
         self.todo), self.batch, self.custom_msg()))
 
@@ -115,7 +123,7 @@ class ObjectReview(Base):
   batches.
   """
 
-  def __init__(self, objects, bad, num_to_prefetch=10):
+  def __init__(self, objects, bad, num_to_prefetch=10, locations=None):
     """Constructor.
 
     Args:
@@ -124,6 +132,9 @@ class ObjectReview(Base):
         agglomerated together.
       bad: set in which to store objects or groups of objects flagged as bad.
       num_to_prefetch: number of items from `objects` to prefetch
+      locations: iterable of xyz tuples of length len(objects). If specified,
+        the cursor will be automaticaly moved to the location corresponding to
+        the current object if batch == 1.
     """
     super(ObjectReview, self).__init__(num_to_prefetch=num_to_prefetch)
 
@@ -134,6 +145,10 @@ class ObjectReview(Base):
       else:
         self.todo.append([o])
 
+    if locations is not None:
+      assert len(self.todo) == len(locations)
+      self.locations = list(locations)
+
     self.bad = bad
 
     self.viewer.actions.add('next-batch', lambda s: self.next_batch())
@@ -141,8 +156,7 @@ class ObjectReview(Base):
     self.viewer.actions.add('dec-batch', lambda s: self.batch_dec())
     self.viewer.actions.add('inc-batch', lambda s: self.batch_inc())
     self.viewer.actions.add('mark-bad', lambda s: self.mark_bad())
-    self.viewer.actions.add(
-        'mark-removed-bad', lambda s: self.mark_removed_bad())
+    self.viewer.actions.add('mark-removed-bad', lambda s: self.mark_removed_bad())
     self.viewer.actions.add('toggle-equiv', lambda s: self.toggle_equiv())
 
     with self.viewer.config_state.txn() as s:
@@ -170,7 +184,7 @@ class ObjectReview(Base):
     else:
       self.bad.add(frozenset(sids))
 
-    self.update_msg('marked bad: %r' % (sids,))
+    self.update_msg('marked bad: %r' % (sids, ))
     self.next_batch()
 
   def mark_removed_bad(self):
@@ -178,7 +192,7 @@ class ObjectReview(Base):
     new_bad = original - set(self.viewer.state.layers['seg'].segments)
     if new_bad:
       self.bad |= new_bad
-      self.update_msg('marked bad: %r' % (new_bad,))
+      self.update_msg('marked bad: %r' % (new_bad, ))
 
 
 class ObjectClassification(Base):
@@ -259,7 +273,6 @@ class GraphUpdater(Base):
       objects: iterable of object IDs or iterables of object IDs
       bad: set in which to store objects flagged as bad
     """
-
     super(GraphUpdater, self).__init__()
     self.graph = graph
     self.split_objects = []
@@ -377,5 +390,5 @@ class GraphUpdater(Base):
     else:
       self.bad.add(frozenset(sids))
 
-    self.update_msg('marked bad: %r' % (sids,))
+    self.update_msg('marked bad: %r' % (sids, ))
     self.next_batch()
