@@ -153,12 +153,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
   raw data (specified by z index), followed by 2d distance transform
   and peak finding to identify seed points.
   """
-
-  _SORT_CMP = dict(
-      ascending=None,
-      descending=lambda x, y: -cmp(x, y),
-  )
-
+g
   def __init__(self, canvas, min_distance=7, threshold_abs=2.5,
                sort_cmp='ascending', **kwargs):
     """Initialize settings.
@@ -167,7 +162,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
       canvas: inference Canvas object.
       min_distance: forwarded to peak_local_max.
       threshold_abs: forwarded to peak_local_max.
-      sort_cmp: the cmp function to use for sorting seed coordinates.
+      sort_cmp: 'ascending' or 'descending' for sorting seed coordinates.
       **kwargs: forwarded to base.
 
     For compatibility with original version, min_distance=3, threshold_abs=0,
@@ -176,7 +171,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
     super(PolicyPeaks2d, self).__init__(canvas, **kwargs)
     self.min_distance = min_distance
     self.threshold_abs = threshold_abs
-    self.sort_cmp = self._SORT_CMP[sort_cmp]
+    self.sort_reverse = sort_cmp.strip().lower().startswith('de')
 
   def _init_coords(self):
     logging.info('2d peaks: starting')
@@ -222,7 +217,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
       self.coords = np.concatenate((self.coords, idxs)) if z != 0 else idxs
 
     self.coords = np.array(
-        sorted([(z, y, x) for z, y, x in self.coords], cmp=self.sort_cmp))
+        sorted([(z, y, x) for z, y, x in self.coords], reverse=self.sort_reverse))
 
     logging.info('2d peaks: found %d total local maxima', self.coords.shape[0])
 
