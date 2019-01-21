@@ -153,7 +153,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
   raw data (specified by z index), followed by 2d distance transform
   and peak finding to identify seed points.
   """
-g
+
   def __init__(self, canvas, min_distance=7, threshold_abs=2.5,
                sort_cmp='ascending', **kwargs):
     """Initialize settings.
