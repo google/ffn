@@ -95,14 +95,14 @@ def parse_resegmentation_filename(filename):
   return id1, id2, x, y, z
 
 
-def evaluate_endpoint_resegmentation(filename, seg_volstore,
+def evaluate_endpoint_resegmentation(filename, seg_volume,
                                      resegmentation_radius,
                                      threshold=0.5):
   """Evaluates endpoint resegmentation.
 
   Args:
     filename: path to the file containing resegmentation results
-    seg_volstore: VolumeStore object with the original segmentation
+    seg_volume: volume object with the original segmentation
     resegmentation_radius: (z, y, x) radius of the resegmentation subvolume
     threshold: threshold at which to create objects from the predicted
         object map
@@ -130,10 +130,10 @@ def evaluate_endpoint_resegmentation(filename, seg_volstore,
     prob = np.nan_to_num(prob)  # nans indicate unvisited voxels
 
   sr = result.segmentation_radius
-  orig_seg = seg_volstore[0,
-                          (z - sr.z):(z + sr.z + 1),
-                          (y - sr.y):(y + sr.y + 1),
-                          (x - sr.x):(x + sr.x + 1)][0, ...]
+  orig_seg = seg_volume[0,
+                        (z - sr.z):(z + sr.z + 1),
+                        (y - sr.y):(y + sr.y + 1),
+                        (x - sr.x):(x + sr.x + 1)][0, ...]
   seg1 = orig_seg == id1
   if not np.any(seg1):
     raise InvalidBaseSegmentatonError()
@@ -157,18 +157,20 @@ def evaluate_endpoint_resegmentation(filename, seg_volstore,
   return result
 
 
-def evaluate_pair_resegmentation(filename, seg_volstore,
+def evaluate_pair_resegmentation(filename, seg_volume,
                                  resegmentation_radius,
                                  analysis_radius,
+                                 voxel_size,
                                  threshold=0.5):
   """Evaluates segment pair resegmentation.
 
   Args:
     filename: path to the file containing resegmentation results
-    seg_volstore: VolumeStore object with the original segmentation
+    seg_volume: VolumeStore object with the original segmentation
     resegmentation_radius: (z, y, x) radius of the resegmentation subvolume
     analysis_radius: (z, y, x) radius of the subvolume in which to perform
         analysis
+    voxel_size: (z, y, x) voxel size in physical units
     threshold: threshold at which to create objects from the predicted
         object map
 
@@ -221,10 +223,10 @@ def evaluate_pair_resegmentation(filename, seg_volstore,
   r = result.eval.radius
   r.z, r.y, r.x = analysis_r
 
-  seg = seg_volstore[0,
-                     (z - analysis_r[0]):(z + analysis_r[0] + 1),
-                     (y - analysis_r[1]):(y + analysis_r[1] + 1),
-                     (x - analysis_r[2]):(x + analysis_r[2] + 1)][0, ...]
+  seg = seg_volume[0,
+                   (z - analysis_r[0]):(z + analysis_r[0] + 1),
+                   (y - analysis_r[1]):(y + analysis_r[1] + 1),
+                   (x - analysis_r[2]):(x + analysis_r[2] + 1)][0, ...]
   seg1 = seg == id1
   seg2 = seg == id2
   result.eval.num_voxels_a = int(np.sum(seg1))
@@ -234,13 +236,10 @@ def evaluate_pair_resegmentation(filename, seg_volstore,
     raise InvalidBaseSegmentatonError()
 
   # Record information about the size of the original segments.
-  sampling = (seg_volstore.info.pixelsize.z,
-              seg_volstore.info.pixelsize.y,
-              seg_volstore.info.pixelsize.x)
   result.eval.max_edt_a = float(
-      ndimage.distance_transform_edt(seg1, sampling=sampling).max())
+      ndimage.distance_transform_edt(seg1, sampling=voxel_size).max())
   result.eval.max_edt_b = float(
-      ndimage.distance_transform_edt(seg2, sampling=sampling).max())
+      ndimage.distance_transform_edt(seg2, sampling=voxel_size).max())
 
   # Offset of the analysis subvolume within the resegmentation subvolume.
   delta = np.array(resegmentation_radius) - analysis_r
