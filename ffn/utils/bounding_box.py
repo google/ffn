@@ -245,3 +245,168 @@ def containing(*boxes):
     start = np.minimum(start, box.start)
     end = np.maximum(end, box.end)
   return BoundingBox(start=start, end=end)
+
+
+class OrderlyOverlappingCalculator(object):
+  """Helper for calculating orderly overlapping sub-boxes.
+
+  Provides a serial generator as well as num_sub_boxes and index_to_sub_box to
+  support parallel dynamic generation.
+  """
+
+  def __init__(self,
+               outer_box,
+               sub_box_size,
+               overlap,
+               include_small_sub_boxes=False,
+               back_shift_small_sub_boxes=False):
+    """Helper for calculating orderly overlapping sub-boxes.
+
+    Args:
+      outer_box: BoundingBox to be broken into sub-boxes.
+      sub_box_size: 3-sequence giving desired 3d size of each sub-box.  Smaller
+        sub-boxes may be included at the back edge of the volume, but not if
+        they are smaller than overlap (in that case they are completely included
+        in the preceding box) unless include_small_sub_boxes is True.  If an
+        element is None, the entire range available within outer_box is used for
+        that dimension.
+      overlap: 3-sequence giving the overlap between neighboring sub-boxes. Must
+        be < sub_box_size.
+      include_small_sub_boxes: Whether to include small subvolumes at the back
+        end which are smaller than overlap
+      back_shift_small_sub_boxes: If True, do not produce undersized boxes at
+        the back edge of the outer_box.  Instead, shift the start of these boxes
+        back so that they can maintain sub_box_size.  This means that the boxes
+        at the back edge will have more overlap than the rest of the boxes.
+
+    Raises:
+      ValueError: if overlap >= sub_box_size.
+    """
+    # Allow sub_box_size elements to be None, which means use the whole range.
+    sub_box_size = list(sub_box_size)
+    for i, x in enumerate(sub_box_size):
+      if x is None:
+        sub_box_size[i] = outer_box.size[i]
+
+    overlap = np.array(overlap)
+    stride = np.array(sub_box_size) - overlap
+    if np.any(stride <= 0):
+      raise ValueError('sub_box_size must be greater than overlap: %r versus %r'
+                       % (sub_box_size, overlap))
+
+    if not include_small_sub_boxes:
+      # Don't include subvolumes at the back end that are smaller than overlap;
+      # these are included completely in the preceding subvolume.
+      end = outer_box.end - overlap
+    else:
+      end = outer_box.end
+
+    self.start = outer_box.start
+    self.stride = stride
+    self.end = end
+    self.sub_box_size = sub_box_size
+    self.outer_box = outer_box
+
+    size = end - self.start
+    self.total_sub_boxes_xyz = (size + stride - 1) // stride  # ceil_div
+    self.back_shift_small_sub_boxes = back_shift_small_sub_boxes
+
+  def start_to_box(self, start):
+    full_box = BoundingBox(start=start, size=self.sub_box_size)
+    if self.back_shift_small_sub_boxes:
+      shift = np.maximum(full_box.end - self.outer_box.end, 0)
+      if shift.any():
+        return BoundingBox(start=full_box.start - shift, size=self.sub_box_size)
+      return full_box
+    else:
+      return intersection(full_box, self.outer_box)
+
+  def index_to_sub_box(self, index):
+    """Translates a linear index to appropriate sub box.
+
+    Args:
+      index: The linear index in [0, num_sub_boxes)
+
+    Returns:
+      The corresponding BoundingBox.
+
+    The boxes are guaranteed to be generated in Fortran order, i.e. x fastest
+    changing.  (This means that VolumeStore Subvolumes generated from contiguous
+    indices will be near each other in x.)
+    """
+    coords = np.unravel_index(index, self.total_sub_boxes_xyz, order='F')
+    return self.start_to_box(coords * self.stride + self.start)
+
+  def offset_to_index(self, index, offset):
+    """Calculate the index of another box at offset w.r.t.
+
+    current index.
+
+    Args:
+      index: the current flat index from which to calculate the offset index.
+      offset: the xyz offset from current index at which to calculate the new
+        index.
+
+    Returns:
+      The flat index at offset from current index, or None if the given offset
+      goes beyond the range of sub-boxes.
+
+    This is usually used to calculate the boxes that neighbor the current box.
+    """
+    coords = np.unravel_index(index, self.total_sub_boxes_xyz, order='F')
+    offset_coords = np.array(coords) + offset
+    if np.any(offset_coords < 0) or np.any(
+        offset_coords >= self.total_sub_boxes_xyz):
+      return None
+    return np.ravel_multi_index(
+        offset_coords, self.total_sub_boxes_xyz, order='F')
+
+  def num_sub_boxes(self):
+    """Total number of sub-boxes."""
+    prod = self.total_sub_boxes_xyz.astype(object).prod()
+    return prod
+
+  def generate_sub_boxes(self):
+    """Generates all sub-boxes in raster order."""
+    for z in range(self.start[2], self.end[2], self.stride[2]):
+      for y in range(self.start[1], self.end[1], self.stride[1]):
+        for x in range(self.start[0], self.end[0], self.stride[0]):
+          yield _required(self.start_to_box((x, y, z)))
+
+  def batched_sub_boxes(self,
+                        batch_size,
+                        begin_index=0,
+                        end_index=None):
+    """Generates iterators for batches of sub-boxes.
+
+    Args:
+      batch_size: how many sub-boxes per iterable.
+      begin_index: the inclusive beginning numerical index.
+      end_index: the exclusive ending numerical index.
+
+    Yields:
+      An iterable of sub-boxes for each batch.
+    """
+    if end_index is None:
+      end_index = self.num_sub_boxes()
+    for i_begin in xrange(begin_index, end_index, batch_size):
+      i_end = min(i_begin + batch_size, end_index)
+      yield (
+          _required(self.index_to_sub_box(i)) for i in xrange(i_begin, i_end))
+
+  def tag_border_locations(self, index):
+    """Checks whether a box touches the border of the BoundingBox.
+
+    Args:
+      index: flat index identifying the box to check
+
+    Returns:
+      2-tuple of bool 3d ndarrays (dim order: x, y, z).
+      True if the box touches the border at the start/end (respectively for the
+      1st and 2nd element of the tuple) of the bbox along the given dimension.
+    """
+    coords_xyz = np.array(
+        np.unravel_index(index, self.total_sub_boxes_xyz, order='F'))
+    is_start = coords_xyz == 0
+    is_end = coords_xyz == self.total_sub_boxes_xyz - 1
+    return is_start, is_end
