@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Builds a TFRecord file of coordinates for training.
 
 Use ./compute_partitions.py to generate data for --partition_volumes.
