@@ -392,7 +392,7 @@ class OrderlyOverlappingCalculator(object):
     for i_begin in range(begin_index, end_index, batch_size):
       i_end = min(i_begin + batch_size, end_index)
       yield (
-          _required(self.index_to_sub_box(i)) for i in xrange(i_begin, i_end))
+          _required(self.index_to_sub_box(i)) for i in range(i_begin, i_end))
 
   def tag_border_locations(self, index):
     """Checks whether a box touches the border of the BoundingBox.
