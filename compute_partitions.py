@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 r"""Computes the partition map for a segmentation.
 
 For every labeled voxel of the input volume, computes the fraction of identically
@@ -12,6 +14,7 @@ Sample invocation:
       --lom_radius 16,16,16 \
       --min_size 10000
 """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
