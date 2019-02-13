@@ -198,7 +198,7 @@ class ObjectReview(Base):
 class ObjectClassification(Base):
   """Base class for object classification."""
 
-  def __init__(self, objects, key_to_class, num_to_prefetch=10):
+  def __init__(self, objects, key_to_class, num_to_prefetch=10, locations=None):
     """Constructor.
 
     Args:
@@ -209,6 +209,10 @@ class ObjectClassification(Base):
     super(ObjectClassification, self).__init__(num_to_prefetch=num_to_prefetch)
     self.todo = [[o] for o in objects]
     self.results = defaultdict(set)  # class -> ids
+
+    if locations is not None:
+      assert len(self.todo) == len(locations)
+      self.locations = list(locations)
 
     self.viewer.actions.add('mr-next-batch', lambda s: self.next_batch())
     self.viewer.actions.add('mr-prev-batch', lambda s: self.prev_batch())
