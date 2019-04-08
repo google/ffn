@@ -37,7 +37,7 @@ def load_equivalences(paths):
   equiv_graph = nx.Graph()
 
   for path in paths:
-    with gfile.Open(path, "r") as f:
+    with open(path, "r") as f:
       reader = pd.read_csv(
           f, sep=",", engine="c", comment="#", chunksize=4096, header=None)
       for chunk in reader:
