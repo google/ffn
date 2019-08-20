@@ -124,7 +124,7 @@ def evaluate_endpoint_resegmentation(filename, seg_volume,
   sr = result.segmentation_radius
   sr.z, sr.y, sr.x = resegmentation_radius
 
-  with gfile.Open(filename, 'r') as f:
+  with gfile.Open(filename, 'rb') as f:
     data = np.load(f)
     prob = storage.dequantize_probability(data['probs'])
     prob = np.nan_to_num(prob)  # nans indicate unvisited voxels
@@ -193,7 +193,7 @@ def evaluate_pair_resegmentation(filename, seg_volume,
   sr = result.segmentation_radius
   sr.z, sr.y, sr.x = resegmentation_radius
 
-  with gfile.Open(filename, 'r') as f:
+  with gfile.Open(filename, 'rb') as f:
     data = np.load(f)
     prob = storage.dequantize_probability(data['probs'])
     prob = np.nan_to_num(prob)  # nans indicate unvisited voxels
