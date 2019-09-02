@@ -411,7 +411,7 @@ def load_segmentation(segmentation_dir, corner, allow_cpoint=False,
                      (segmentation_dir, corner))
 
   with gfile.Open(target_path, 'rb') as f:
-    data = np.load(f)
+    data = np.load(f, allow_pickle=True)
     if 'segmentation' in data:
       seg = data['segmentation']
     else:
