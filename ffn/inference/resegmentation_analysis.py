@@ -253,9 +253,9 @@ def evaluate_pair_resegmentation(filename, seg_volume,
   # Record information about the size of the reconstructed segments.
   evaluate_segmentation_result(
       reseg[0, ...], dels[0], moves[0], delta, analysis_r, seg1, seg2,
-      sampling, result.eval.from_a)
+      voxel_size, result.eval.from_a)
   evaluate_segmentation_result(
       reseg[1, ...], dels[1], moves[1], delta, analysis_r, seg1, seg2,
-      sampling, result.eval.from_b)
+      voxel_size, result.eval.from_b)
 
   return result
