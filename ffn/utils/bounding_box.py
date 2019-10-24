@@ -189,6 +189,11 @@ class BoundingBox(object):
     return hash((tuple(self.start), tuple(self.size)))
 
 
+def _required(bbox: Optional[BoundingBox]) -> BoundingBox:
+  assert bbox is not None
+  return bbox
+
+
 def intersection(box0, box1):
   """Get intersection between two bounding boxes, or None."""
   if isinstance(box0, bounding_box_pb2.BoundingBox):
