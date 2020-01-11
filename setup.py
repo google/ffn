@@ -13,5 +13,5 @@ setup(
 	license		= 'LICENSE',
 	description	= 'Flood-Filling Networks for volumetric instance segmentation',
 	long_description= open('README.md').read(),
-	install_requires= ['scikit-image', 'scipy', 'numpy', 'tensorflow', 'h5py', 'PIL', 'absl-py'],
+	install_requires= ['scikit-image', 'scipy', 'numpy', 'tensorflow', 'h5py', 'absl-py'],
 )
