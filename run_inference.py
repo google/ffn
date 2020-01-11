@@ -17,6 +17,10 @@
 """Runs FFN inference within a dense bounding box.
 
 Inference is performed within a single process.
+
+Usage: python run_inference.py \
+    --inference_request "$(cat configs/inference.pbtxt)" \
+    --bounding_box 'start { x:0 y:0 z:0 } size { x:250 y:250 z:250 }'
 """
 
 import os
