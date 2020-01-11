@@ -167,6 +167,7 @@ def load_from_numpylike(coordinates, volume_names, shape, volume_map,
     loaded = tf.py_func(
         _load_from_numpylike, [coordinates, volume_names], [dtype],
         name=scope)[0]
+    # loaded has shape [1, x, y, z, num_channels]
     loaded.set_shape([1] + list(shape[::-1]) + [num_channels])
     return loaded
 
