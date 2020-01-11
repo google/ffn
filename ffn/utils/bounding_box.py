@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from bisect import bisect_right
+from typing import Optional
 import copy
 
 import numpy as np
