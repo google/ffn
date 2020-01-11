@@ -48,6 +48,8 @@ class BaseSeedPolicy(object):
     del kwargs
     # TODO(mjanusz): Remove circular reference between Canvas and seed policies.
     self.canvas = weakref.proxy(canvas)
+    # JG: self.coords will be an ndarray of shape [n_coords, 3]
+    # representing (z, y, x) locations in the image to use as seeds.
     self.coords = None
     self.idx = 0
 
@@ -284,3 +286,38 @@ class PolicyInvertOrigins(BaseSeedPolicy):
     points.sort(reverse=True)
     self.coords = np.array([origin_info.start_zyx for _, origin_info
                             in points])
+
+
+class ManualSeedPolicy(BaseSeedPolicy):
+    """Use a manually-specified set of seeds."""
+    def __init__(self, canvas, **kwargs):
+      logging.info("ManualSeedPolicy.__init__()")
+      super(ManualSeedPolicy, self).__init__(canvas, **kwargs)
+
+    def _init_coords(self):
+        # TODO(jpgard): collect these from user; temporarily these are hard-coded.
+        coords = [(0, 4521, 3817), ]
+        logging.info('ManualSeedPolicy: starting with coords {}'.format(coords))
+        self.coords = np.array(coords)
+
+    def __next__(self):
+        """Returns the next seed point as (z, y, x).
+
+        Does initial filtering of seed points to exclude locations that are
+        too close to the image border.
+
+        Returns:
+          (z, y, x) tuples.
+
+        Raises:
+          StopIteration when the seeds are exhausted.
+        """
+        if self.coords is None:
+            self._init_coords()
+
+        while self.idx < self.coords.shape[0]:
+            curr = self.coords[self.idx, :]
+            self.idx += 1
+            return tuple(curr)  # z, y, x
+
+        raise StopIteration()
