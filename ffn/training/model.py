@@ -155,10 +155,12 @@ class FFNModel(object):
     trainables = tf.trainable_variables()
     if trainables:
       for var in trainables:
-        tf.summary.histogram(var.name.replace(':0', ''), var)
+        # tf.summary.histogram(var.name.replace(':0', ''), var)
+        tf.summary.histogram(var.name, var)
     for grad, var in grads_and_vars:
-      tf.summary.histogram(
-          'gradients/%s' % var.name.replace(':0', ''), grad)
+      # tf.summary.histogram(
+      #     'gradients/%s' % var.name.replace(':0', ''), grad)
+      tf.summary.histogram(var.name, grad)
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
