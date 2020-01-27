@@ -330,9 +330,6 @@ class ManualSeedPolicy(BaseSeedPolicy):
     def __next__(self):
         """Returns the next seed point as (z, y, x).
 
-        Does initial filtering of seed points to exclude locations that are
-        too close to the image border.
-
         Returns:
           (z, y, x) tuples.
 
@@ -347,5 +344,67 @@ class ManualSeedPolicy(BaseSeedPolicy):
             self.idx += 1
             logging.info("ManualSeedPolicy processing seed: {}".format(curr))
             return tuple(curr)  # z, y, x
+
+        raise StopIteration()
+
+class TipTracerSeedPolicy(BaseSeedPolicy):
+    def __init__(self, canvas, skeletonization_threshold=0.5, **kwargs):
+        super(TipTracerSeedPolicy, self).__init__(canvas, **kwargs)
+        self.skeletonization_threshold = skeletonization_threshold
+
+    def _init_coords(self):
+        """Initialize array of seed coordinates in (z, y, x) format."""
+        coords = [(0, 4521, 3817),  # soma center
+                  ]
+        self.coords = np.array(coords)
+
+    def __next__(self):
+        """Update the list of seeds and return the next seed point as (z, y, x).
+
+        Applies skeletonization to the existing canvas, extracts leaf nodes of the
+        current skeleton, and adds the coordinates of leaf nodes to the list of seeds.
+
+        Returns:
+          (z, y, x) tuples.
+
+        Raises:
+          StopIteration when the seeds are exhausted.
+        """
+        if self.coords is None:
+            self._init_coords()
+
+        logging.info("TipTracerSeedPolicy processing seed")
+        if self.idx > 0:  # Only extract tips after inference has run at least once.
+            from skimage import morphology
+            import networkx as nx
+            from scipy.special import expit
+            from skan import skeleton_to_csgraph
+            logging.info("skeletonizing and extracting seeds")
+            # Transform logits to probabilities, apply threshold, and skeletonize to
+            # extract the locations of leaf nodes ("tips")
+            c_t = expit(np.squeeze(self.canvas.seed))
+            c_t = np.nan_to_num(c_t)
+            c_t = (c_t >= self.skeletonization_threshold).astype(np.uint8)
+            s_t = morphology.skeletonize(c_t)
+            g_t, c_t, _ = skeleton_to_csgraph(s_t)
+            g_t = nx.from_scipy_sparse_matrix(g_t)
+            Gc = max(nx.connected_component_subgraphs(g_t), key=len)
+            leaf_node_ids = [node_id for node_id, node_degree
+                             in nx.degree(Gc, Gc.nodes())
+                             if node_degree == 1
+                             ]
+            # Add the leaf nodes as new seeds
+            logging.info("adding {} nodes to coords at iteration {}".format(
+                len(leaf_node_ids), self.idx
+            ))
+            new_seeds = c_t[leaf_node_ids, :].astype(int)
+            new_seeds = np.hstack((np.zeros((len(leaf_node_ids), 1), dtype=int),
+                                   new_seeds))
+            self.coords = np.vstack((self.coords, new_seeds))
+
+        while self.idx < self.coords.shape[0]:
+            curr = self.coords[self.idx, :]
+            self.idx += 1
+            return tuple(curr)
 
         raise StopIteration()
