@@ -515,7 +515,6 @@ class Canvas(object):
 
     with timer_counter(self.counters, 'segment_at-loop'):
       for pos in self.movement_policy:
-        logging.info("[JG] current (z, y, x) pos at iter {}: {}".format(num_iters, pos))
         # Terminate early if the seed got too weak.
         if self.seed[start_pos] < self.options.move_threshold:
           self.counters['seed_got_too_weak'].Increment()

@@ -296,7 +296,34 @@ class ManualSeedPolicy(BaseSeedPolicy):
 
     def _init_coords(self):
         # TODO(jpgard): collect these from user; temporarily these are hard-coded.
-        coords = [(0, 4521, 3817), ]
+        coords = [(0, 4521, 3817),  # soma center
+                  # (0, 3416, 248),  # bad seed in dark cloud for testing
+                  (0, 3477, 3936),
+                  (0, 3744, 4413),
+                  (0, 2937, 5097),
+                  (0, 3428, 3795),
+                  (0, 3486, 3945),
+                  (0, 3548, 4053),
+                  (0, 3610, 4178),
+                  (0, 3651, 4282),
+                  (0, 3662, 4333),
+                  (0, 3634, 4384),
+                  (0, 3522, 4375),
+                  (0, 3345, 4359),
+                  (0, 2384, 5579),  # axon
+                  (0, 2205, 5702),  # axon
+                  (0, 1962, 5901),  # axon
+                  (0, 1713, 6111),  # axon
+                  (0, 1484, 6274),  # junction of axon branches
+                  (0, 1025, 6452),  # in axon branches
+                  (0, 822, 6521),  # in axon branches
+                  (0, 773, 6560),  # in axon branches
+                  (0, 402, 6453),  # point in "twist" of axon branches
+                  (0, 1167, 6423),  # in axon branches
+                  (0, 1197, 6627),  # in axon branches
+                  (0, 1074, 6735),  # in axon branches
+                  (0, 1428, 6948),  # in axon branches
+                  ]
         logging.info('ManualSeedPolicy: starting with coords {}'.format(coords))
         self.coords = np.array(coords)
 
@@ -318,6 +345,7 @@ class ManualSeedPolicy(BaseSeedPolicy):
         while self.idx < self.coords.shape[0]:
             curr = self.coords[self.idx, :]
             self.idx += 1
+            logging.info("ManualSeedPolicy processing seed: {}".format(curr))
             return tuple(curr)  # z, y, x
 
         raise StopIteration()
