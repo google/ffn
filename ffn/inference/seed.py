@@ -376,7 +376,7 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
 
 class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
-    def __init__(self, canvas, save_history_every=None, skeletonization_threshold=0.5,
+    def __init__(self, canvas, save_history_every=1, skeletonization_threshold=0.5,
                  **kwargs):
         """
         At each iteration, add the tips of the trace to the list of seeds.
@@ -390,9 +390,9 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
         :param kwargs: other kwargs passed to BaseSeedPolicy constructor.
         """
 
-        super(TipTracerSeedPolicy, self).__init__(canvas, **kwargs)
+        super(TipTracerSeedPolicy, self).__init__(
+            canvas, save_history_every=save_history_every, **kwargs)
         self.skeletonization_threshold = skeletonization_threshold
-        self.save_seed_every = save_history_every
         self.skeleton_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
 
     def _init_coords(self):
@@ -433,6 +433,8 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
         if self.coords is None:
             self._init_coords()
 
+        self._check_save_history()
+
         if self.idx > 0:  # Only extract new tips after inference has run at least once.
 
             logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
@@ -463,10 +465,9 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
                  )
             )
             self.coords = np.vstack((self.coords, new_seeds))
-            self._check_save_history()
 
         # while self.idx < self.coords.shape[0]:
-        while self.idx < 20:
+        while self.idx < 3:
             curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
