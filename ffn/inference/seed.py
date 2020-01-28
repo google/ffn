@@ -405,11 +405,18 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
         self.coords = np.array(coords)
 
     def _check_save_skeleton(self, skel):
+        """Check whether skeleton should be saved, and save it."""
         if not self.save_skeleton_every:
             return
         if self.idx % self.save_skeleton_every == 0:
+            if len(skel.shape) == 2:
+                # skel is a 2D array; need to add a z-axis
+                skel_exp = np.expand_dims(skel, 0)
+            skel_exp = np.expand_dims(skel_exp, -1)
             self.skeleton_history = np.concatenate(
-                (self.skeleton_history, skel),
+                (
+                    self.skeleton_history,
+                    skel_exp),
                 axis=-1
             )
 
@@ -428,23 +435,20 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
         if self.coords is None:
             self._init_coords()
 
-        logging.info("TipTracerSeedPolicy processing seed")
-
-        # Save the seed
-
-        if self.idx > 0:  # Only extract tips after inference has run at least once.
+        if self.idx > 0:  # Only extract new tips after inference has run at least once.
             self._check_save_seed()
 
-            logging.info("skeletonizing and extracting seeds")
+            logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
             # Transform logits to probabilities, apply threshold, and skeletonize to
             # extract the locations of leaf nodes ("tips")
             c_t = expit(np.squeeze(self.canvas.seed))
             c_t = np.nan_to_num(c_t)
             c_t = (c_t >= self.skeletonization_threshold).astype(np.uint8)
             s_t = morphology.skeletonize(c_t)
+            self._check_save_skeleton(s_t)
             g_t, c_t, _ = skeleton_to_csgraph(s_t)
-
             g_t = nx.from_scipy_sparse_matrix(g_t)
+            # Find largest connected component and extract leaf nodes.
             Gc = max(nx.connected_component_subgraphs(g_t), key=len)
             leaf_node_ids = [node_id for node_id, node_degree
                              in nx.degree(Gc, Gc.nodes())
