@@ -300,11 +300,18 @@ class SeedPolicyWithSaver(BaseSeedPolicy):
         # Seed history is an ndarray of shape [z, y, x, iter_num].
         self.seed_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
         self.coord_history = None
+        self.seg_prob_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
 
     def save_seed_history(self):
         self.seed_history = np.concatenate((self.seed_history,
                                             np.expand_dims(self.canvas.seed, -1)),
                                            axis=-1)
+
+    def save_seg_prob_history(self):
+        self.seg_prob_history = np.concatenate((self.seg_prob_history,
+                                            np.expand_dims(self.canvas.seg_prob, -1)),
+                                           axis=-1)
+
 
     def _check_save_history(self):
         """Check whether seeds should be saved at this iteration; if so, save them."""
@@ -376,7 +383,7 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
 
 class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
-    def __init__(self, canvas, save_history_every=1, skeletonization_threshold=0.5,
+    def __init__(self, canvas, save_history_every=1, skeletonization_threshold=0.3,
                  **kwargs):
         """
         At each iteration, add the tips of the trace to the list of seeds.
@@ -437,6 +444,9 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
         if self.idx > 0:  # Only extract new tips after inference has run at least once.
 
+            # TODO(jpgard): the seed does not seem to be changing at all. This is also
+            #  a problem, as it leads to the same coordinates being repeatedly added.
+
             logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
             # Transform logits to probabilities, apply threshold, and skeletonize to
             # extract the locations of leaf nodes ("tips")
@@ -453,21 +463,29 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
                              in nx.degree(Gc, Gc.nodes())
                              if node_degree == 1
                              ]
-            # Add the leaf nodes as new seeds
-            logging.info("adding {} nodes to coords at iteration {}".format(
-                len(leaf_node_ids), self.idx
-            ))
+
+            # The largest connected component may not change after each iteration. So,
+            # find the candidate seeds, but only add seeds to the coordinate queue which
+            # are not already in self.coords.
+
             new_seeds = c_t[leaf_node_ids, :].astype(int)
+            seed_is_unique = np.apply_along_axis(lambda x: x[0] and x[1], 1,
+                                ~np.isin(new_seeds, self.coords[:,1:3]))
+            new_seeds = new_seeds[seed_is_unique]
             new_seeds = np.hstack(
-                (np.zeros((len(leaf_node_ids), 1), dtype=int),  # fix z-coordinate at zero
+                (np.zeros((len(new_seeds), 1), dtype=int),  # fix z-coordinate at zero
                  new_seeds,
-                 np.full((len(leaf_node_ids), 1), fill_value=self.idx, dtype=int)
+                 np.full((len(new_seeds), 1), fill_value=self.idx, dtype=int)
                  )
             )
+            logging.info("adding {} nodes of {} candidate nodes to coords "
+                         "at iteration {}".format(len(new_seeds), len(leaf_node_ids),
+                                                  self.idx))
             self.coords = np.vstack((self.coords, new_seeds))
 
         # while self.idx < self.coords.shape[0]:
-        while self.idx < 3:
+        while self.idx < 20:
+            import ipdb;ipdb.set_trace()
             curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
