@@ -294,29 +294,31 @@ class PolicyInvertOrigins(BaseSeedPolicy):
 
 class SeedPolicyWithSaver(BaseSeedPolicy):
     """A seed policy which also optionally saves the seed at specified intervals."""
-    def __init__(self, canvas, save_seed_every=None, save_coords=True, **kwargs):
+    def __init__(self, canvas, save_history_every=None, **kwargs):
         super(SeedPolicyWithSaver, self).__init__(canvas, **kwargs)
-        self.save_seed_every = save_seed_every
+        self.save_history_every = save_history_every
         # Seed history is an ndarray of shape [z, y, x, iter_num].
         self.seed_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
-        self.save_coords = save_coords
         self.coord_history = None
 
-    def _check_save_seed(self):
-        """Check whether seed should be saved at this iteration; if so, save it."""
-        if not self.save_seed_every:
+    def save_seed_history(self):
+        self.seed_history = np.concatenate((self.seed_history,
+                                            np.expand_dims(self.canvas.seed, -1)),
+                                           axis=-1)
+
+    def _check_save_history(self):
+        """Check whether seeds should be saved at this iteration; if so, save them."""
+        if not self.save_history_every:
             return
-        if self.idx % self.save_seed_every == 0:
-            self.seed_history = np.concatenate((self.seed_history,
-                                               np.expand_dims(self.canvas.seed, -1)),
-                                               axis=-1)
+        if self.idx % self.save_history_every == 0:
+            self.save_seed_history()
 
 
 class ManualSeedPolicy(SeedPolicyWithSaver):
     """Use a manually-specified set of seeds."""
-    def __init__(self, canvas, save_seed_every=5, **kwargs):
+    def __init__(self, canvas, save_history_every=None):
       logging.info("ManualSeedPolicy.__init__()")
-      super(ManualSeedPolicy, self).__init__(canvas, save_seed_every, **kwargs)
+      super(ManualSeedPolicy, self).__init__(canvas, save_history_every, **kwargs)
 
     def _init_coords(self):
         # TODO(jpgard): collect these from user; temporarily these are hard-coded.
@@ -364,7 +366,7 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
             self._init_coords()
 
         while self.idx < self.coords.shape[0]:
-            self._check_save_seed()
+            self._check_save_history()
             curr = self.coords[self.idx, :]
             self.idx += 1
             logging.info("ManualSeedPolicy processing seed: {}".format(curr))
@@ -374,14 +376,11 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
 
 class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
-    def __init__(self, canvas, skeletonization_threshold=0.5, save_seed_every=1,
-                 save_skeleton_every=1,
-                 **kwargs):
+    def __init__(self, canvas, save_history_every=None, **kwargs):
         """
         At each iteration, add the tips of the trace to the list of seeds.
 
         :param canvas: Canvas object
-        :param skeletonization_threshold: threshold to use during skeletonization at
         each step (this is used to threshold the predicted probabilities in canvas).
         :param save_seeds_every: save canvas at this interval; this consumes a lot of
         memory for large arrays but is useful for debugging and visualization of
@@ -390,12 +389,9 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
         :param kwargs: other kwargs passed to BaseSeedPolicy constructor.
         """
 
-
-
         super(TipTracerSeedPolicy, self).__init__(canvas, **kwargs)
         self.skeletonization_threshold = skeletonization_threshold
-        self.save_seed_every = save_seed_every
-        self.save_skeleton_every = save_skeleton_every
+        self.save_seed_every = save_history_every
         self.skeleton_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
 
     def _init_coords(self):
@@ -406,9 +402,10 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
     def _check_save_skeleton(self, skel):
         """Check whether skeleton should be saved, and save it."""
-        if not self.save_skeleton_every:
+        if not self.save_history_every:
             return
-        if self.idx % self.save_skeleton_every == 0:
+        if self.idx % self.save_history_every == 0:
+            # save the skeleton
             if len(skel.shape) == 2:
                 # skel is a 2D array; need to add a z-axis
                 skel_exp = np.expand_dims(skel, 0)
@@ -436,7 +433,6 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
             self._init_coords()
 
         if self.idx > 0:  # Only extract new tips after inference has run at least once.
-            self._check_save_seed()
 
             logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
             # Transform logits to probabilities, apply threshold, and skeletonize to
@@ -462,13 +458,14 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
             new_seeds = np.hstack(
                 (np.zeros((len(leaf_node_ids), 1), dtype=int),  # fix z-coordinate at zero
                  new_seeds,
-                 np.full((len(leaf_node_ids), 1), dtype=int)
+                 np.full((len(leaf_node_ids), 1), fill_value=self.idx, dtype=int)
                  )
             )
             self.coords = np.vstack((self.coords, new_seeds))
+            self._check_save_history()
 
         # while self.idx < self.coords.shape[0]:
-        while self.idx < 10:
+        while self.idx < 20:
             curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
