@@ -376,7 +376,8 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
 
 class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
-    def __init__(self, canvas, save_history_every=None, **kwargs):
+    def __init__(self, canvas, save_history_every=None, skeletonization_threshold=0.5,
+                 **kwargs):
         """
         At each iteration, add the tips of the trace to the list of seeds.
 
