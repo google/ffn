@@ -29,6 +29,10 @@ import numpy as np
 from scipy import ndimage
 import skimage
 import skimage.feature
+from skimage import morphology
+import networkx as nx
+from scipy.special import expit
+from skan import skeleton_to_csgraph
 
 from . import storage
 
@@ -288,11 +292,31 @@ class PolicyInvertOrigins(BaseSeedPolicy):
                             in points])
 
 
-class ManualSeedPolicy(BaseSeedPolicy):
+class SeedPolicyWithSaver(BaseSeedPolicy):
+    """A seed policy which also optionally saves the seed at specified intervals."""
+    def __init__(self, canvas, save_seed_every=None, save_coords=True, **kwargs):
+        super(SeedPolicyWithSaver, self).__init__(canvas, **kwargs)
+        self.save_seed_every = save_seed_every
+        # Seed history is an ndarray of shape [z, y, x, iter_num].
+        self.seed_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
+        self.save_coords = save_coords
+        self.coord_history = None
+
+    def _check_save_seed(self):
+        """Check whether seed should be saved at this iteration; if so, save it."""
+        if not self.save_seed_every:
+            return
+        if self.idx % self.save_seed_every == 0:
+            self.seed_history = np.concatenate((self.seed_history,
+                                               np.expand_dims(self.canvas.seed, -1)),
+                                               axis=-1)
+
+
+class ManualSeedPolicy(SeedPolicyWithSaver):
     """Use a manually-specified set of seeds."""
-    def __init__(self, canvas, **kwargs):
+    def __init__(self, canvas, save_seed_every=5, **kwargs):
       logging.info("ManualSeedPolicy.__init__()")
-      super(ManualSeedPolicy, self).__init__(canvas, **kwargs)
+      super(ManualSeedPolicy, self).__init__(canvas, save_seed_every, **kwargs)
 
     def _init_coords(self):
         # TODO(jpgard): collect these from user; temporarily these are hard-coded.
@@ -340,6 +364,7 @@ class ManualSeedPolicy(BaseSeedPolicy):
             self._init_coords()
 
         while self.idx < self.coords.shape[0]:
+            self._check_save_seed()
             curr = self.coords[self.idx, :]
             self.idx += 1
             logging.info("ManualSeedPolicy processing seed: {}".format(curr))
@@ -347,16 +372,46 @@ class ManualSeedPolicy(BaseSeedPolicy):
 
         raise StopIteration()
 
-class TipTracerSeedPolicy(BaseSeedPolicy):
-    def __init__(self, canvas, skeletonization_threshold=0.5, **kwargs):
+class TipTracerSeedPolicy(SeedPolicyWithSaver):
+
+    def __init__(self, canvas, skeletonization_threshold=0.5, save_seed_every=1,
+                 save_skeleton_every=1,
+                 **kwargs):
+        """
+        At each iteration, add the tips of the trace to the list of seeds.
+
+        :param canvas: Canvas object
+        :param skeletonization_threshold: threshold to use during skeletonization at
+        each step (this is used to threshold the predicted probabilities in canvas).
+        :param save_seeds_every: save canvas at this interval; this consumes a lot of
+        memory for large arrays but is useful for debugging and visualization of
+        inference results. Note that the results are only written to disk after
+        completion of the Runner.run(), not after each iteration.
+        :param kwargs: other kwargs passed to BaseSeedPolicy constructor.
+        """
+
+
+
         super(TipTracerSeedPolicy, self).__init__(canvas, **kwargs)
         self.skeletonization_threshold = skeletonization_threshold
+        self.save_seed_every = save_seed_every
+        self.save_skeleton_every = save_skeleton_every
+        self.skeleton_history = np.expand_dims(np.zeros_like(self.canvas.image), -1)
 
     def _init_coords(self):
         """Initialize array of seed coordinates in (z, y, x) format."""
-        coords = [(0, 4521, 3817),  # soma center
+        coords = [(0, 4521, 3817, 0),  # soma center
                   ]
         self.coords = np.array(coords)
+
+    def _check_save_skeleton(self, skel):
+        if not self.save_skeleton_every:
+            return
+        if self.idx % self.save_skeleton_every == 0:
+            self.skeleton_history = np.concatenate(
+                (self.skeleton_history, skel),
+                axis=-1
+            )
 
     def __next__(self):
         """Update the list of seeds and return the next seed point as (z, y, x).
@@ -374,11 +429,12 @@ class TipTracerSeedPolicy(BaseSeedPolicy):
             self._init_coords()
 
         logging.info("TipTracerSeedPolicy processing seed")
+
+        # Save the seed
+
         if self.idx > 0:  # Only extract tips after inference has run at least once.
-            from skimage import morphology
-            import networkx as nx
-            from scipy.special import expit
-            from skan import skeleton_to_csgraph
+            self._check_save_seed()
+
             logging.info("skeletonizing and extracting seeds")
             # Transform logits to probabilities, apply threshold, and skeletonize to
             # extract the locations of leaf nodes ("tips")
@@ -387,6 +443,7 @@ class TipTracerSeedPolicy(BaseSeedPolicy):
             c_t = (c_t >= self.skeletonization_threshold).astype(np.uint8)
             s_t = morphology.skeletonize(c_t)
             g_t, c_t, _ = skeleton_to_csgraph(s_t)
+
             g_t = nx.from_scipy_sparse_matrix(g_t)
             Gc = max(nx.connected_component_subgraphs(g_t), key=len)
             leaf_node_ids = [node_id for node_id, node_degree
@@ -398,12 +455,17 @@ class TipTracerSeedPolicy(BaseSeedPolicy):
                 len(leaf_node_ids), self.idx
             ))
             new_seeds = c_t[leaf_node_ids, :].astype(int)
-            new_seeds = np.hstack((np.zeros((len(leaf_node_ids), 1), dtype=int),
-                                   new_seeds))
+            new_seeds = np.hstack(
+                (np.zeros((len(leaf_node_ids), 1), dtype=int),  # fix z-coordinate at zero
+                 new_seeds,
+                 np.full((len(leaf_node_ids), 1), dtype=int)
+                 )
+            )
             self.coords = np.vstack((self.coords, new_seeds))
 
-        while self.idx < self.coords.shape[0]:
-            curr = self.coords[self.idx, :]
+        # while self.idx < self.coords.shape[0]:
+        while self.idx < 10:
+            curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
 
