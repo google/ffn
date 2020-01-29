@@ -383,7 +383,7 @@ class ManualSeedPolicy(SeedPolicyWithSaver):
 
 class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
-    def __init__(self, canvas, save_history_every=1, skeletonization_threshold=0.3,
+    def __init__(self, canvas, save_history_every=1, skeletonization_threshold=0.25,
                  **kwargs):
         """
         At each iteration, add the tips of the trace to the list of seeds.
@@ -444,8 +444,6 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
         if self.idx > 0:  # Only extract new tips after inference has run at least once.
 
-            # TODO(jpgard): the seed does not seem to be changing at all. This is also
-            #  a problem, as it leads to the same coordinates being repeatedly added.
 
             logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
             # Transform logits to probabilities, apply threshold, and skeletonize to
@@ -484,8 +482,7 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
             self.coords = np.vstack((self.coords, new_seeds))
 
         # while self.idx < self.coords.shape[0]:
-        while self.idx < 20:
-            import ipdb;ipdb.set_trace()
+        while self.idx < 4:
             curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
