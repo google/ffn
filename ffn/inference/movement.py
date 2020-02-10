@@ -195,6 +195,16 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
   def next(self):
     return self.__next__()
 
+  def any_valid_coords_in_queue(self):
+    def is_valid_coord(coord):
+      return not (self.quantize_pos(coord) in self.done_rounded_coords) and (
+        self.canvas.is_valid_pos(tuple(coord)))
+
+    for _, coord in self.scored_coords:
+      if is_valid_coord(coord):
+        return True
+    return False
+
   def quantize_pos(self, pos):
     """Quantizes the positions symmetrically to a grid downsampled by deltas."""
     # Compute offset relative to the origin of the current segment and
