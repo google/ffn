@@ -450,9 +450,19 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
             leaf_node_yx = c_t[leaf_node_ids, :].astype(int).tolist()
             new_seeds.extend(leaf_node_yx)
 
-        # Add z-coordinate to new_seeds
-        new_seeds = np.hstack((np.zeros((len(new_seeds), 1), dtype=int), new_seeds))
-        return new_seeds
+        # Add z-coordinate to new_seeds and append to list of seed coords.
+        new_seeds = np.hstack((np.zeros((len(new_seeds), 1), dtype=int),
+                               new_seeds,
+                               np.full((len(new_seeds), 1), self.idx, dtype=int)))
+
+        # Compute the unique union of existing coords and new seeds (do not re-seed in
+        # locations which have already been seeded.
+
+        coord_update = np.vstack((self.coords, new_seeds))
+        coord_update = np.unique(coord_update, axis=0)
+        coord_update = coord_update[np.argsort(coord_update[:, 3])]
+        self.coords = coord_update
+
 
     def __next__(self):
         """Update the list of seeds and return the next seed point as (z, y, x).

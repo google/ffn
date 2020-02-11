@@ -349,7 +349,6 @@ class Canvas(object):
     Returns:
       Boolean indicating whether to run FFN inference at the given position.
     """
-
     if not ignore_move_threshold:
       if self.seed[pos] < self.options.move_threshold:
         self.counters['skip_threshold'].Increment()
@@ -367,13 +366,10 @@ class Canvas(object):
       return False
 
     # Location already segmented?
-    # TODO(jpgard): this code is not solving the problem; however, this *is* the block
-    #  where the current inference process is failing. Figure out how to get the
-    #  inference to continue.
 
     if self.segmentation[pos] > 0:
       if self.allow_overlapping_segment:
-        logging.info("allowing overlapping segmentation as pos {}".format(pos))
+        logging.info("allowing overlapping segmentation at pos {}".format(pos))
       else:
         self.counters['skip_invalid_pos'].Increment()
         logging.info('.. segmentation already active: %r', pos)
@@ -534,10 +530,6 @@ class Canvas(object):
 
     with timer_counter(self.counters, 'segment_at-loop'):
       for pos in self.movement_policy:
-        log_every_num_iters = 500
-        if (num_iters % log_every_num_iters == 0) or num_iters == 0:
-          self.log_info("[JG] segment_at() processing pos {} at iteration {}".format(
-            pos, num_iters))
         # Terminate early if the seed got too weak.
         if self.seed[start_pos] < self.options.move_threshold:
           self.counters['seed_got_too_weak'].Increment()
@@ -568,18 +560,15 @@ class Canvas(object):
           assert np.all(pred.shape == self._pred_size)
 
           self._maybe_save_checkpoint()
-        # TODO(jpgard): This loop terminates before the movement_policy
-        #  coordinates are exhausted due to existence of invalid seeds; need to detect
-        #  when the iteration is going to terminate, and at that point, add more seeds
-        #  via skeletonization. Once the new seeds are generated, they will need to be
-        #  added to self.movement_policy.
-        print(len(self.movement_policy.scored_coords))
-        # if not len(self.movement_policy.scored_coords):  # this is last iteration
-        #   self.log_info("finished all positions in movement_policy")
-    print("this shouldnt print")
-    import ipdb;
-    ipdb.set_trace()
-    print("this shouldnt print either")
+
+        if not self.movement_policy.any_valid_coords_in_queue():
+          # We have reached the end of this tracing iteration; pull more seeds.
+          try:
+            self.log_info("refreshing seeds.")
+            self.seed_policy.refresh_seeds()
+          # If this method is not implemented for the seed policy, skip it.
+          except Exception as e:
+            pass
 
     return num_iters
 
@@ -610,19 +599,9 @@ class Canvas(object):
       mbd = self.options.min_boundary_dist
       mbd = np.array([mbd.z, mbd.y, mbd.x])
 
-      # TODO(jpgard): this loop is being executed exactly once; all of the iteration
-      #  over individual seeds happens within this loop.
-      #  (1) The seed_policy iterator is changing, but Python isn't picking up on the
-      #  changes (seeds are being added
-      #  during the loop but they are not consumed).
-      #  (2) The coordinates are being added, but no inference is being done on them;
-      #  __next__() is being called
-      #  somewhere that model inference isn't being run.
-
       for pos in TimedIter(self.seed_policy, self.counters, 'seed-policy'):
 
         self.log_info("[JG] segment_all() processing pos {}".format(pos))
-        self.log_info("[JG] expect new runs of inference at this pos!")
 
         # When starting a new segment the move_threshold on the probability
         # should be ignored when determining if the position is valid.
