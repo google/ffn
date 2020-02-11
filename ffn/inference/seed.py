@@ -425,6 +425,35 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
                 axis=-1
             )
 
+    def refresh_seeds(self, n_trees=1) -> np.ndarray:
+        """Fetch a new set of tip seeds from the current canvas."""
+        new_seeds = list()
+        logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
+        # Transform logits to probabilities, apply threshold, and skeletonize to
+        # extract the locations of leaf nodes ("tips")
+        c_t = expit(np.squeeze(self.canvas.seed))
+        c_t = np.nan_to_num(c_t)
+        c_t = (c_t >= self.skeletonization_threshold).astype(np.uint8)
+        s_t = morphology.skeletonize(c_t)
+        self._check_save_skeleton(s_t)
+        g_t, c_t, _ = skeleton_to_csgraph(s_t)
+        g_t = nx.from_scipy_sparse_matrix(g_t)
+        # Get connected components and extract leaf nodes, sorting from large to small.
+        subgraphs = sorted(nx.connected_components(g_t), key=len, reverse=True)
+        for subgraph_nodes in subgraphs[:n_trees]:
+
+            leaf_node_ids = [node_id for node_id, node_degree
+                             in g_t.degree(subgraph_nodes)
+                             if node_degree == 1
+                             ]
+            # Produce a nested list of [y, x] coordinates of leaf nodes in this subgraph.
+            leaf_node_yx = c_t[leaf_node_ids, :].astype(int).tolist()
+            new_seeds.extend(leaf_node_yx)
+
+        # Add z-coordinate to new_seeds
+        new_seeds = np.hstack((np.zeros((len(new_seeds), 1), dtype=int), new_seeds))
+        return new_seeds
+
     def __next__(self):
         """Update the list of seeds and return the next seed point as (z, y, x).
 
@@ -442,47 +471,7 @@ class TipTracerSeedPolicy(SeedPolicyWithSaver):
 
         self._check_save_history()
 
-        if self.idx > 0:  # Only extract new tips after inference has run at least once.
-
-
-            logging.info("TipTracerSeedPolicy skeletonizing and extracting seeds")
-            # Transform logits to probabilities, apply threshold, and skeletonize to
-            # extract the locations of leaf nodes ("tips")
-            c_t = expit(np.squeeze(self.canvas.seed))
-            c_t = np.nan_to_num(c_t)
-            c_t = (c_t >= self.skeletonization_threshold).astype(np.uint8)
-            s_t = morphology.skeletonize(c_t)
-            self._check_save_skeleton(s_t)
-            g_t, c_t, _ = skeleton_to_csgraph(s_t)
-            g_t = nx.from_scipy_sparse_matrix(g_t)
-            # Find largest connected component and extract leaf nodes.
-            Gc = max(nx.connected_component_subgraphs(g_t), key=len)
-            leaf_node_ids = [node_id for node_id, node_degree
-                             in nx.degree(Gc, Gc.nodes())
-                             if node_degree == 1
-                             ]
-
-            # The largest connected component may not change after each iteration. So,
-            # find the candidate seeds, but only add seeds to the coordinate queue which
-            # are not already in self.coords.
-
-            new_seeds = c_t[leaf_node_ids, :].astype(int)
-            seed_is_unique = np.apply_along_axis(lambda x: x[0] and x[1], 1,
-                                ~np.isin(new_seeds, self.coords[:,1:3]))
-            new_seeds = new_seeds[seed_is_unique]
-            new_seeds = np.hstack(
-                (np.zeros((len(new_seeds), 1), dtype=int),  # fix z-coordinate at zero
-                 new_seeds,
-                 np.full((len(new_seeds), 1), fill_value=self.idx, dtype=int)
-                 )
-            )
-            logging.info("adding {} nodes of {} candidate nodes to coords "
-                         "at iteration {}".format(len(new_seeds), len(leaf_node_ids),
-                                                  self.idx))
-            self.coords = np.vstack((self.coords, new_seeds))
-
-        # while self.idx < self.coords.shape[0]:
-        while self.idx < 4:
+        while self.idx < self.coords.shape[0]:
             curr = self.coords[self.idx, :3]
             self.idx += 1
             return tuple(curr)
