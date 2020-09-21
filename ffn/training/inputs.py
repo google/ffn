@@ -152,7 +152,7 @@ def load_from_numpylike(coordinates, volume_names, shape, volume_map,
     if data.ndim == 4:
       data = np.rollaxis(data, 0, start=4)
     else:
-      data = np.expand_dims(data, 4)
+      data = np.expand_dims(data, data.ndim)
 
     # Add flat batch dim and return.
     data = np.expand_dims(data, 0)

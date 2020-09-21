@@ -31,6 +31,7 @@ import numpy as np
 from . import bounding_box_pb2
 from . import geom_utils
 
+from typing import Optional
 
 class BoundingBox(object):
   """BoundingBox built on Numpy, interoperable with bounding_box_pb2."""
