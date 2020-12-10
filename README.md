@@ -135,3 +135,7 @@ seed and visualize the results while inference is running.
 
 Both examples are configured to use a 3d convstack FFN model trained on the
 `validation1` volume of the FIB-25 dataset from the FlyEM project at Janelia.
+
+# Further information
+
+Please see `doc/manual.md`.
