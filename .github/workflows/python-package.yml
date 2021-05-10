@@ -12,7 +12,7 @@ jobs:
     - run: pip install flake8 -r requirements.txt
     - name: Lint with flake8
       env:
-          IGNORE: E111,E114,E124,E125,E129,E203,E223,E225,E231,E251,E302,E303,E305,E306,E402,E701,E722,E741,F401,F811,F841,W191,W391
+          IGNORE: E111,E114,E121,E123,E124,E125,E129,E203,E223,E225,E231,E251,E302,E303,E305,E306,E402,E701,E722,E741,F401,F811,F841,W191,W391,W503,W504
       run: |
         flake8 . --count --ignore=$IGNORE --max-complexity=20 --max-line-length=4963 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
