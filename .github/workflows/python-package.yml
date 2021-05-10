@@ -1,31 +1,18 @@
 name: Python package
-
 on: [push]
-
 jobs:
   build:
-
     runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 1
-      matrix:
-        python-version: [3.7]  # [2.7, 3.5, 3.6, 3.7]
-
     steps:
-    - uses: actions/checkout@v1
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+    - run: pip install --upgrade pip
+    - run: pip install flake8 -r requirements.txt
     - name: Lint with flake8
+      env:
+          IGNORE: E111,E114,E124,E125,E129,E203,E223,E225,E231,E251,E302,E303,E305,E306,E402,E701,E722,E741,F401,F811,F841,W191,W391
       run: |
-        pip install flake8
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --ignore=$IGNORE --max-complexity=20 --max-line-length=4963 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     #- name: Test with pytest
