@@ -20,7 +20,6 @@ Inference is performed within a single process.
 """
 
 import os
-import time
 
 from google.protobuf import text_format
 from absl import app
