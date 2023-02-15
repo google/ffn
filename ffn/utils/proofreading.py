@@ -1,4 +1,4 @@
-# Copyright 2018 Google Inc.
+# Copyright 2018-2023 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,19 +15,17 @@
 
 """Utilities for small-scale proofreading in Neuroglancer."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import collections
 from collections import defaultdict
 import copy
 import itertools
+import threading
+
 import networkx as nx
 import neuroglancer
 
 
-class Base(object):
+class Base:
   """Base class for proofreading workflows.
 
   To use, define a subclass overriding the `set_init_state` method to
@@ -36,17 +34,36 @@ class Base(object):
   The segmentation volume needs to be called `seg`.
   """
 
-  def __init__(self, num_to_prefetch=10):
+  def __init__(self, num_to_prefetch=10, locations=None, objects=None):
     self.viewer = neuroglancer.Viewer()
     self.num_to_prefetch = num_to_prefetch
 
-    self.todo = []  # items are lists of segment IDs
+    self.managed_layers = set(['seg'])
+    self.todo = []  # items are maps from layer name to lists of segment IDs
+    if objects is not None:
+      self._set_todo(objects)
+
     self.index = 0
     self.batch = 1
     self.apply_equivs = False
-    self.locations = None
+
+    if locations is not None:
+      self.locations = list(locations)
+      assert len(self.todo) == len(locations)
+    else:
+      self.locations = None
 
     self.set_init_state()
+
+  def _set_todo(self, objects):
+    for o in objects:
+      if isinstance(o, collections.abc.Mapping):
+        self.todo.append(o)
+        self.managed_layers |= set(o.keys())
+      elif isinstance(o, collections.abc.Iterable):
+        self.todo.append({'seg': o})
+      else:
+        self.todo.append({'seg': [o]})
 
   def set_init_state(self):
     raise NotImplementedError()
@@ -65,10 +82,11 @@ class Base(object):
     else:
       l.equivalences.clear()
       for a in self.todo[self.index:self.index + self.batch]:
+        a = [aa[layer] for aa in a]
         l.equivalences.union(*a)
 
     if loc is not None:
-      s.navigation.pose.position.voxel_coordinates = loc
+      s.position = loc
 
     self.viewer.set_state(s)
 
@@ -96,10 +114,13 @@ class Base(object):
     self.index = max(0, self.index)
     self.update_batch()
 
-  def list_segments(self, index=None):
+  def list_segments(self, index=None, layer='seg'):
     if index is None:
       index = self.index
-    return list(set(itertools.chain(*self.todo[index:index + self.batch])))
+    return list(
+        set(
+            itertools.chain(
+                *[x[layer] for x in self.todo[index:index + self.batch]])))
 
   def custom_msg(self):
     return ''
@@ -109,9 +130,11 @@ class Base(object):
       loc = self.locations[self.index]
     else:
       loc = None
-    self.update_segments(self.list_segments(), loc)
-    self.update_msg('index:%d/%d  batch:%d  %s' % (self.index, len(
-        self.todo), self.batch, self.custom_msg()))
+
+    for layer in self.managed_layers:
+      self.update_segments(self.list_segments(layer=layer), loc, layer=layer)
+    self.update_msg('index:%d/%d  batch:%d  %s' %
+                    (self.index, len(self.todo), self.batch, self.custom_msg()))
 
   def prefetch(self):
     prefetch_states = []
@@ -120,8 +143,13 @@ class Base(object):
       if idx >= len(self.todo):
         break
       prefetch_state = copy.deepcopy(self.viewer.state)
-      prefetch_state.layers['seg'].segments = self.list_segments(idx)
+      for layer in self.managed_layers:
+        prefetch_state.layers[layer].segments = self.list_segments(
+            idx, layer=layer)
       prefetch_state.layout = '3d'
+      if self.locations is not None:
+        prefetch_state.position = self.locations[idx]
+
       prefetch_states.append(prefetch_state)
 
     with self.viewer.config_state.txn() as s:
@@ -151,19 +179,8 @@ class ObjectReview(Base):
         the cursor will be automaticaly moved to the location corresponding to
         the current object if batch == 1.
     """
-    super(ObjectReview, self).__init__(num_to_prefetch=num_to_prefetch)
-
-    self.todo = []
-    for o in objects:
-      if isinstance(o, collections.Iterable):
-        self.todo.append(o)
-      else:
-        self.todo.append([o])
-
-    if locations is not None:
-      assert len(self.todo) == len(locations)
-      self.locations = list(locations)
-
+    super().__init__(
+        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects)
     self.bad = bad
 
     self.viewer.actions.add('next-batch', lambda s: self.next_batch())
@@ -193,7 +210,7 @@ class ObjectReview(Base):
       self.update_msg('decrease batch to 1 to mark objects bad')
       return
 
-    sids = self.todo[self.index]
+    sids = self.todo[self.index]['seg']
     if len(sids) == 1:
       self.bad.add(list(sids)[0])
     else:
@@ -221,13 +238,10 @@ class ObjectClassification(Base):
       key_to_class: dict mapping keys to class labels
       num_to_prefetch: number of `objects` to prefetch
     """
-    super(ObjectClassification, self).__init__(num_to_prefetch=num_to_prefetch)
-    self.todo = [[o] for o in objects]
-    self.results = defaultdict(set)  # class -> ids
+    super().__init__(
+        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects)
 
-    if locations is not None:
-      assert len(self.todo) == len(locations)
-      self.locations = list(locations)
+    self.results = defaultdict(set)  # class -> ids
 
     self.viewer.actions.add('mr-next-batch', lambda s: self.next_batch())
     self.viewer.actions.add('mr-prev-batch', lambda s: self.prev_batch())
@@ -252,7 +266,7 @@ class ObjectClassification(Base):
     return ' '.join('%s:%d' % (k, len(v)) for k, v in self.results.items())
 
   def classify(self, cls):
-    sid = list(self.todo[self.index])[0]
+    sid = list(self.todo[self.index]['seg'])[0]
     for v in self.results.values():
       v -= set([sid])
 
@@ -284,26 +298,13 @@ class GraphUpdater(Base):
   (according to the current state of the agglomeraton graph).
   """
 
-  def __init__(self, graph, objects, bad):
-    """Constructor.
-
-    Args:
-      graph: networkx Graph object to modify
-      objects: iterable of object IDs or iterables of object IDs
-      bad: set in which to store objects flagged as bad
-    """
-    super(GraphUpdater, self).__init__()
+  def __init__(self, graph, objects, bad, num_to_prefetch=0):
+    super().__init__(objects=objects, num_to_prefetch=num_to_prefetch)
     self.graph = graph
     self.split_objects = []
     self.split_path = []
     self.split_index = 1
-
-    self.todo = []
-    for o in objects:
-      if isinstance(o, collections.Iterable):
-        self.todo.append(o)
-      else:
-        self.todo.append([o])
+    self.sem = threading.Semaphore()
 
     self.bad = bad
     self.viewer.actions.add('add-ccs', lambda s: self.add_ccs())
@@ -323,8 +324,8 @@ class GraphUpdater(Base):
       s.input_event_bindings.viewer['keyc'] = 'add-ccs'
       s.input_event_bindings.viewer['keya'] = 'clear-splits'
       s.input_event_bindings.viewer['keym'] = 'merge-segments'
-      s.input_event_bindings.viewer['bracketleft'] = 'split-dec'
-      s.input_event_bindings.viewer['bracketright'] = 'split-inc'
+      s.input_event_bindings.viewer['shift+bracketleft'] = 'split-dec'
+      s.input_event_bindings.viewer['shift+bracketright'] = 'split-inc'
       s.input_event_bindings.viewer['keys'] = 'accept-split'
       s.input_event_bindings.data_view['shift+mousedown0'] = 'add-split'
       s.input_event_bindings.viewer['keyv'] = 'mark-bad'
@@ -352,12 +353,14 @@ class GraphUpdater(Base):
     self.update_split()
 
   def add_ccs(self):
-    curr = set(self.viewer.state.layers['seg'].segments)
-    for sid in self.viewer.state.layers['seg'].segments:
-      if sid in self.graph:
-        curr |= set(nx.node_connected_component(self.graph, sid))
+    if self.sem.acquire(blocking=False):
+      curr = set(self.viewer.state.layers['seg'].segments)
+      for sid in self.viewer.state.layers['seg'].segments:
+        if sid in self.graph:
+          curr |= set(nx.node_connected_component(self.graph, sid))
 
-    self.update_segments(curr)
+      self.update_segments(curr)
+      self.sem.release()
 
   def accept_split(self):
     edge = self.split_path[self.split_index - 1:self.split_index + 1]
@@ -391,7 +394,7 @@ class GraphUpdater(Base):
 
   def add_split(self, s):
     if len(self.split_objects) < 2:
-      self.split_objects.append(s.selected_values['seg'])
+      self.split_objects.append(s.selected_values['seg'].value)
     self.update_msg(
         'split: %s' % (':'.join(str(x) for x in self.split_objects)))
 
@@ -403,7 +406,7 @@ class GraphUpdater(Base):
       self.update_msg('decrease batch to 1 to mark objects bad')
       return
 
-    sids = self.todo[self.index]
+    sids = self.todo[self.index]['seg']
     if len(sids) == 1:
       self.bad.add(list(sids)[0])
     else:
