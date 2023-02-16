@@ -14,10 +14,6 @@
 # ==============================================================================
 """Utilities for running FFN inference."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import namedtuple
 import functools
 import json
@@ -25,16 +21,6 @@ import logging
 import os
 import threading
 import time
-import numpy as np
-from numpy.lib.stride_tricks import as_strided
-
-from scipy.special import expit
-from scipy.special import logit
-from skimage import transform
-
-import tensorflow as tf
-
-from tensorflow import gfile
 from . import align
 from . import executor
 from . import inference_pb2
@@ -42,13 +28,19 @@ from . import inference_utils
 from . import movement
 from . import seed
 from . import storage
+from connectomics.segmentation import labels as label_utils
 from .inference_utils import Counters
 from .inference_utils import TimedIter
 from .inference_utils import timer_counter
-from . import segmentation
+import numpy as np
+from numpy.lib.stride_tricks import as_strided
+from scipy.special import expit
+from scipy.special import logit
+import tensorflow as tf
+from tensorflow import gfile
 from ..training.import_util import import_symbol
-from ..utils import ortho_plane_visualization
 from ..utils import bounding_box
+from ..utils import ortho_plane_visualization
 
 MSEC_IN_SEC = 1000
 MAX_SELF_CONSISTENT_ITERS = 32
@@ -699,7 +691,7 @@ class Canvas(object):
                       corner[1]:end[1],  #
                       corner[2]:end[2]]
 
-    init_seg, global_to_local = segmentation.make_labels_contiguous(init_seg)
+    init_seg, global_to_local = label_utils.make_contiguous(init_seg)
     init_seg = init_seg[0, ...]
 
     self.global_to_local_ids = dict(global_to_local)

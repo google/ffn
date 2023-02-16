@@ -1,4 +1,4 @@
-# Copyright 2020 Google Inc.
+# Copyright 2020-2023 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,21 +15,20 @@
 """Utilities for identifying and processing decision points."""
 
 import itertools
-from typing import Dict, Sequence, Tuple
+from typing import Sequence
 
+from . import bounding_box
+from connectomics.segmentation import labels
 import numpy as np
 import pandas as pd
 from scipy import ndimage
-
-from . import segmentation
-from . import bounding_box
 
 
 def find_decision_points(seg: np.ndarray,
                          voxel_size: Sequence[float],
                          max_distance: float = None,
                          subvol_box: bounding_box.BoundingBox = None
-                        ) -> Dict[Tuple[int, int], Tuple[float, np.ndarray]]:
+                        ) -> dict[tuple[int, int], tuple[float, np.ndarray]]:
   """Identifies decision points in a segmentation subvolume.
 
   Args:
@@ -48,8 +47,7 @@ def find_decision_points(seg: np.ndarray,
   """
   # EDT is the Euclidean Distance Transform, specifying how far voxels added
   # in 'expanded_seg' are from the seeds in 'seg'.
-  expanded_seg, edt = segmentation.watershed_expand(seg, voxel_size,
-                                                    max_distance)
+  expanded_seg, edt = labels.watershed_expand(seg, voxel_size, max_distance)
   if subvol_box is not None:
     expanded_seg = expanded_seg[subvol_box.to_slice()]
     edt = edt[subvol_box.to_slice()]

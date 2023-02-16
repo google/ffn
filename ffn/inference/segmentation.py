@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc.
+# Copyright 2017-2023 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,49 +17,7 @@
 from collections import Counter
 
 import numpy as np
-import scipy.sparse
 import skimage.measure
-
-
-# Monkey patch fix for indexing overflow problems with 64 bit IDs.
-# See also:
-# http://scipy-user.10969.n7.nabble.com/SciPy-User-strange-error-when-creating-csr-matrix-td20129.html
-# https://github.com/scipy/scipy/pull/4678
-if scipy.__version__ in ('0.14.0', '0.14.1', '0.15.1'):
-  def _get_index_dtype(*unused_args, **unused_kwargs):
-    return np.int64
-  scipy.sparse.compressed.get_index_dtype = _get_index_dtype
-  scipy.sparse.csr.get_index_dtype = _get_index_dtype
-  scipy.sparse.csc.get_index_dtype = _get_index_dtype
-  scipy.sparse.bsr.get_index_dtype = _get_index_dtype
-
-
-def make_labels_contiguous(labels):
-  """Relabels 'labels' so that its ID space is dense.
-
-  If N is the number of unique ids in 'labels', the new IDs will cover the range
-  [0..N-1].
-
-  Args:
-    labels: ndarray of segment IDs
-
-  Returns:
-    tuple of:
-      ndarray of dense segment IDs
-      list of (old_id, new_id) pairs
-  """
-  orig_ids = np.unique(labels)
-  new_ids = np.arange(len(orig_ids))
-  # A sparse matrix is required so that arbitrarily large IDs can be used as
-  # input. The first dimension of the matrix is dummy and has a size of 1 (the
-  # first coordinate is fixed at 0).
-  row_indices = np.zeros_like(orig_ids)
-  col_indices = orig_ids
-  relabel = scipy.sparse.csr_matrix((new_ids, (row_indices, col_indices)))
-  # Index with a 2D array so that the output is a sparse matrix.
-  labels2d = labels.reshape(1, labels.size)
-  relabeled = relabel[0, labels2d]
-  return relabeled.toarray().reshape(labels.shape), zip(orig_ids, new_ids)
 
 
 def clear_dust(data, min_size=10):
