@@ -15,9 +15,9 @@
 """Utilities for identifying and processing decision points."""
 
 import itertools
-from typing import Sequence
+from typing import Optional, Sequence
 
-from . import bounding_box
+from connectomics.common import bounding_box
 from connectomics.segmentation import labels
 import numpy as np
 import pandas as pd
@@ -26,8 +26,8 @@ from scipy import ndimage
 
 def find_decision_points(seg: np.ndarray,
                          voxel_size: Sequence[float],
-                         max_distance: float = None,
-                         subvol_box: bounding_box.BoundingBox = None
+                         max_distance: Optional[float] = None,
+                         subvol_box: Optional[bounding_box.BoundingBox] = None
                         ) -> dict[tuple[int, int], tuple[float, np.ndarray]]:
   """Identifies decision points in a segmentation subvolume.
 
@@ -49,8 +49,8 @@ def find_decision_points(seg: np.ndarray,
   # in 'expanded_seg' are from the seeds in 'seg'.
   expanded_seg, edt = labels.watershed_expand(seg, voxel_size, max_distance)
   if subvol_box is not None:
-    expanded_seg = expanded_seg[subvol_box.to_slice()]
-    edt = edt[subvol_box.to_slice()]
+    expanded_seg = expanded_seg[subvol_box.to_slice3d()]
+    edt = edt[subvol_box.to_slice3d()]
 
   a = expanded_seg
   dataframes = []
