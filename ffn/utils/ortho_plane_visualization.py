@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc.
+# Copyright 2017-2023 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,23 +19,25 @@
 * NaN-aware image color normalization
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+from typing import Optional, Sequence
 
 import numpy as np
-from scipy.special import expit as sigmoid
+from scipy.special import expit
 
 
-def cut_ortho_planes(vol, center=None, cross_hair=False):
+def cut_ortho_planes(
+    vol: np.ndarray,
+    center: Optional[tuple[int, int, int]] = None,
+    cross_hair: bool = False,
+) -> list[np.ndarray]:
   """Cuts 3 axis orthogonal planes from a 3d volume.
 
   Args:
     vol: zyx(c) 3d volume array
     center: coordinate triple where the planes intersect, if none the volume
       center is used (vol.shape//2)
-    cross_hair: boolean, inserts transparent cross hair lines through
-      center point
+    cross_hair: boolean, inserts transparent cross hair lines through center
+      point
 
   Returns:
     planes: list of 3 2d (+channel optional) images. Can be assembled to a
@@ -50,7 +52,7 @@ def cut_ortho_planes(vol, center=None, cross_hair=False):
   for axis, ix in enumerate(center):
     cut_slice = list(full_slice)
     cut_slice[axis] = ix
-    planes.append(vol[cut_slice])
+    planes.append(vol[tuple(cut_slice)])
     if cross_hair:
       # Copy because cross hair is written into array data.
       plane = planes[-1].copy()
@@ -67,13 +69,12 @@ def cut_ortho_planes(vol, center=None, cross_hair=False):
   return planes
 
 
-def concat_ortho_planes(planes):
+def concat_ortho_planes(planes: Sequence[np.ndarray]) -> np.ndarray:
   """Concatenates 3 axis orthogonal planes to a single image display.
 
   Args:
-    planes: list of 3 2d (+channel optional) planes as obtained
-      from ``cut_ortho_planes``. The order of planes must be
-      yx, zx, zy.
+    planes: list of 3 2d (+channel optional) planes as obtained from
+      ``cut_ortho_planes``. The order of planes must be yx, zx, zy.
 
   Returns:
     image: 2d (+channel optional) array
@@ -103,7 +104,7 @@ def concat_ortho_planes(planes):
   return ret
 
 
-def normalize_image(img2d, act=None):
+def normalize_image(img2d: np.ndarray, act: Optional[str] = None) -> np.ndarray:
   """Map unbounded grey image to [0,1]-RGB, r:negative, b:positive, g:nan.
 
   Args:
@@ -123,7 +124,7 @@ def normalize_image(img2d, act=None):
     img_rgb[~nan_mask, 0] = np.tanh(np.clip(img2d, m, 0))[~nan_mask]
     img_rgb[~nan_mask, 2] = np.tanh(np.clip(img2d, 0, mm))[~nan_mask]
   elif act == 'sig':
-    img_rgb[~nan_mask, 0] = sigmoid(img2d[~nan_mask])
+    img_rgb[~nan_mask, 0] = expit(img2d[~nan_mask])
     img_rgb[~nan_mask, 2] = img_rgb[~nan_mask, 0]
   else:
     img_rgb[~nan_mask, 0] = (np.clip(img2d, m, 0) / m)[~nan_mask]
