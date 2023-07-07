@@ -18,10 +18,6 @@ Seed policies are iterable objects yielding (z, y, x) tuples identifying
 points at which the FFN will attempt to create a segment.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import weakref
 

@@ -14,15 +14,11 @@
 # ==============================================================================
 """Tensorflow Python ops and utilities for generating network inputs."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import re
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
-from tensorflow import gfile
+from tensorflow.io import gfile
 from ..utils import bounding_box
 
 
@@ -48,7 +44,7 @@ def create_filename_queue(coordinates_file_pattern, shuffle=True):
              coordinates_file_pattern)
       for i in range(num_shards)]
   else:
-    coord_file_list = gfile.Glob(coordinates_file_pattern)
+    coord_file_list = gfile.glob(coordinates_file_pattern)
   return tf.train.string_input_producer(coord_file_list, shuffle=shuffle)
 
 

@@ -19,10 +19,6 @@ point is then used to train subsequent steps of the FFN by moving the field
 of view in a way dependent on the initial predictions.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import deque
 from io import BytesIO
 from functools import partial
@@ -43,11 +39,11 @@ import six
 
 from scipy.special import expit
 from scipy.special import logit
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from absl import app
 from absl import flags
-from tensorflow import gfile
+from tensorflow.io import gfile
 
 from ffn.inference import movement
 from ffn.training import mask
@@ -602,9 +598,9 @@ def get_batch(load_example, eval_tracker, model, batch_size, get_offsets):
 
 
 def save_flags():
-  gfile.MakeDirs(FLAGS.train_dir)
-  with gfile.Open(os.path.join(FLAGS.train_dir,
-                               'flags.%d' % time.time()), 'w') as f:
+  gfile.makedirs(FLAGS.train_dir)
+  with gfile.GFile(
+      os.path.join(FLAGS.train_dir, 'flags.%d' % time.time()), 'w') as f:
     for mod, flag_list in FLAGS.flags_by_module_dict().items():
       if (mod.startswith('google3.research.neuromancer.tensorflow') or
           mod.startswith('/')):

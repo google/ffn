@@ -18,10 +18,6 @@ Contains implementations of the `BatchExecutor` interface, which takes care
 of actually evaluating the FFN predictions.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import logging
 import os
 try:
@@ -33,7 +29,6 @@ import time
 
 from concurrent import futures
 import numpy as np
-import tensorflow as tf
 from .inference_utils import timer_counter
 
 

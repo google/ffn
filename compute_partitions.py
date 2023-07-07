@@ -28,11 +28,6 @@ Sample invocation:
       --lom_radius 16,16,16 \
       --min_size 10000
 """
-
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from absl import app
 from absl import flags
 from absl import logging

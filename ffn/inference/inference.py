@@ -36,8 +36,8 @@ import numpy as np
 from numpy.lib.stride_tricks import as_strided
 from scipy.special import expit
 from scipy.special import logit
-import tensorflow as tf
-from tensorflow import gfile
+import tensorflow.compat.v1 as tf
+from tensorflow.io import gfile
 from ..training.import_util import import_symbol
 from ..utils import bounding_box
 from ..utils import ortho_plane_visualization
@@ -711,7 +711,7 @@ class Canvas(object):
   def restore_checkpoint(self, path):
     """Restores state from the checkpoint at `path`."""
     self.log_info('Restoring inference checkpoint: %s', path)
-    with gfile.Open(path, 'rb') as f:
+    with gfile.GFile(path, 'rb') as f:
       data = np.load(f)
 
       self.segmentation[:] = data['segmentation']
@@ -743,7 +743,7 @@ class Canvas(object):
     """Saves a inference checkpoint to `path`."""
     self.log_info('Saving inference checkpoint to %s.', path)
     with timer_counter(self.counters, 'save_checkpoint'):
-      gfile.MakeDirs(os.path.dirname(path))
+      gfile.makedirs(os.path.dirname(path))
       with storage.atomic_file(path) as fd:
         seed_policy_state = None
         if self.seed_policy is not None:
@@ -822,8 +822,8 @@ class Runner(object):
 
     logging.debug('Received request:\n%s', request)
 
-    if not gfile.Exists(request.segmentation_output_dir):
-      gfile.MakeDirs(request.segmentation_output_dir)
+    if not gfile.exists(request.segmentation_output_dir):
+      gfile.makedirs(request.segmentation_output_dir)
 
     with timer_counter(self.counters, 'volstore-open'):
       # Disabling cache compression can improve access times by 20-30%
@@ -867,7 +867,7 @@ class Runner(object):
       self._shift_mask_volume = _open_or_none(request.shift_mask)
 
     if request.reference_histogram:
-      with gfile.Open(request.reference_histogram, 'rb') as f:
+      with gfile.GFile(request.reference_histogram, 'rb') as f:
         data = np.load(f)
         self._reference_lut = data['lut']
     else:
@@ -1183,14 +1183,14 @@ class Runner(object):
     cpoint_path = storage.checkpoint_path(
         self.request.segmentation_output_dir, corner)
 
-    if gfile.Exists(seg_path):
+    if gfile.exists(seg_path):
       return None
 
     canvas, alignment = self.make_canvas(corner, subvol_size)
     if canvas is None:
       return None
 
-    if gfile.Exists(cpoint_path):
+    if gfile.exists(cpoint_path):
       canvas.restore_checkpoint(cpoint_path)
 
     if self.request.alignment_options.save_raw:
@@ -1204,7 +1204,7 @@ class Runner(object):
 
     # Attempt to remove the checkpoint file now that we no longer need it.
     try:
-      gfile.Remove(cpoint_path)
+      gfile.remove(cpoint_path)
     except:  # pylint: disable=bare-except
       pass
 

@@ -13,9 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 """Functions for computing consensus between FFN segmentations."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 from collections import defaultdict
 

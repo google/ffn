@@ -13,12 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """Utilites for dealing with 2d and 3d object masks."""
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 
 # TODO(mjanusz): Consider integrating this with the numpy-only crop_and_pad,

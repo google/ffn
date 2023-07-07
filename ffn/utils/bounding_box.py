@@ -18,20 +18,13 @@ Composed of Numpy arrays (3-vectors actually) to support natural arithmetic
 operations.  Easily instantiable from and convertible to a BoundingBox proto.
 """
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from bisect import bisect_right
 import copy
 from typing import Optional
-
 import numpy as np
-
 from . import bounding_box_pb2
 from . import geom_utils
 
-from typing import Optional
 
 class BoundingBox(object):
   """BoundingBox built on Numpy, interoperable with bounding_box_pb2."""

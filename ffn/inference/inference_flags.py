@@ -14,10 +14,6 @@
 # ==============================================================================
 """Helpers to initialize protos from flag values."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from google.protobuf import text_format
 from absl import flags
 from . import inference_pb2

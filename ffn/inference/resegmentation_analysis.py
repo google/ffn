@@ -16,7 +16,6 @@
 
 import re
 
-import google3
 import numpy as np
 from scipy import ndimage
 

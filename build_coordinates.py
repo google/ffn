@@ -20,10 +20,6 @@ Use ./compute_partitions.py to generate data for --partition_volumes.
 Note that the volume names you provide in --partition_volumes will
 have to match the volume labels you pass to the training script.
 """
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 from collections import defaultdict
 
 from absl import app
@@ -32,7 +28,7 @@ from absl import logging
 
 import h5py
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 FLAGS = flags.FLAGS
 

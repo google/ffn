@@ -14,12 +14,9 @@
 # ==============================================================================
 """Simplest FFN model, as described in https://arxiv.org/abs/1611.00421."""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import tensorflow as tf
-
+import functools
+import tensorflow.compat.v1 as tf
+import tf_slim
 from .. import model
 
 
@@ -27,23 +24,23 @@ from .. import model
 # TruncatedNormalInitializedVariable with stddev = 0.01.
 def _predict_object_mask(net, depth=9):
   """Computes single-object mask prediction."""
-  conv = tf.contrib.layers.conv3d
-  with tf.contrib.framework.arg_scope([conv], num_outputs=32,
-                                      kernel_size=(3, 3, 3),
-                                      padding='SAME'):
-    net = conv(net, scope='conv0_a')
-    net = conv(net, scope='conv0_b', activation_fn=None)
+  conv = functools.partial(
+      tf_slim.convolution3d,
+      num_outputs=32, kernel_size=(3, 3, 3), padding='SAME')
+  net = conv(net, scope='conv0_a')
+  net = conv(net, scope='conv0_b', activation_fn=None)
 
-    for i in range(1, depth):
-      with tf.name_scope('residual%d' % i):
-        in_net = net
-        net = tf.nn.relu(net)
-        net = conv(net, scope='conv%d_a' % i)
-        net = conv(net, scope='conv%d_b' % i, activation_fn=None)
-        net += in_net
+  for i in range(1, depth):
+    with tf.name_scope('residual%d' % i):
+      in_net = net
+      net = tf.nn.relu(net)
+      net = conv(net, scope='conv%d_a' % i)
+      net = conv(net, scope='conv%d_b' % i, activation_fn=None)
+      net += in_net
 
   net = tf.nn.relu(net)
-  logits = conv(net, 1, (1, 1, 1), activation_fn=None, scope='conv_lom')
+  logits = tf_slim.convolution3d(
+      net, 1, (1, 1, 1), activation_fn=None, scope='conv_lom')
 
   return logits
 
