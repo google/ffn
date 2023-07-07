@@ -24,13 +24,30 @@ import tempfile
 
 import h5py
 import numpy as np
-
 from tensorflow.io import gfile
+import tensorstore as ts
+
 from . import align
 from . import segmentation
 from ..utils import bounding_box
 
 OriginInfo = namedtuple('OriginInfo', ['start_zyx', 'iters', 'walltime_sec'])
+
+
+class SyncAdapter:
+  """Makes it possible to use a TensorStore as a numpy array synchronously."""
+
+  def __init__(self, tstore):
+    self.tstore = tstore
+
+  def __getitem__(self, ind):
+    return np.array(self.tstore[ind])
+
+  def __getattr__(self, attr):
+    return getattr(self.tstore, attr)
+
+  def __repr__(self):
+    return f'{self.__class__.__name__}({repr(self.tstore)})'
 
 
 def decorated_volume(settings, **kwargs):
@@ -56,6 +73,8 @@ def decorated_volume(settings, **kwargs):
       raise ValueError('hdf5 volume_path should be specified as file_path:'
                        'hdf5_internal_dataset_path.  Got: ' + settings.hdf5)
     volume = h5py.File(path[0])[path[1]]
+  elif settings.HasField('tensorstore'):
+    volume = SyncAdapter(ts.open(json.loads(settings.tensorstore)).result())
   else:
     raise ValueError('A volume_path must be set.')
 

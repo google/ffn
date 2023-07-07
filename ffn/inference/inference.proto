@@ -26,6 +26,22 @@ message DecoratedVolume {
 
     // file_path:hdf5_internal_dataset_path for the volume.
     string hdf5 = 3;
+
+    // JSON TensorStore Spec.
+    //
+    // Note that models are often trained on volumes with dimension ordering
+    // ZYXC, so segmentation quality may be better if the Spec includes
+    // something like:
+    //   transform: {
+    //     'input_rank': 4,
+    //     output: [
+    //       {'input_dimension': 2}
+    //       {'input_dimension': 1}
+    //       {'input_dimension': 0}
+    //       {'input_dimension': 3}
+    //     ]
+    //   }
+    string tensorstore = 4;
   }
 
   // For volinfo Volumes only.
