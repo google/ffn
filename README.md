@@ -130,7 +130,7 @@ We provide sample segmentation results in `results/fib25/sample-training2.npz`.
 For the training2 volume, segmentation takes ~7 min with a P100 GPU.
 
 For an interactive setting, check out
-[`ffn_inference_colab_demo.ipynb`](https://colab.sandbox.google.com/github/google/ffn/blob/master/ffn_inference_colab_demo.ipynb).
+[`ffn_inference_colab_demo.ipynb`](https://colab.sandbox.google.com/github/google/ffn/blob/master/notebooks/ffn_inference_colab_demo.ipynb).
 This Colab notebook shows how to segment a single object with an explicitly defined
 seed and visualize the results while inference is running.
 
