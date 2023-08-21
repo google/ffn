@@ -34,7 +34,7 @@ class Base:
   The segmentation volume needs to be called `seg`.
   """
 
-  def __init__(self, num_to_prefetch=10, locations=None, objects=None):
+  def __init__(self, num_to_prefetch: int = 10, locations=None, objects=None):
     self.viewer = neuroglancer.Viewer()
     self.num_to_prefetch = num_to_prefetch
 
@@ -81,7 +81,7 @@ class Base:
       l.equivalences.clear()
     else:
       l.equivalences.clear()
-      for a in self.todo[self.index:self.index + self.batch]:
+      for a in self.todo[self.index : self.index + self.batch]:
         a = [aa[layer] for aa in a]
         l.equivalences.union(*a)
 
@@ -120,7 +120,10 @@ class Base:
     return list(
         set(
             itertools.chain(
-                *[x[layer] for x in self.todo[index:index + self.batch]])))
+                *[x[layer] for x in self.todo[index : index + self.batch]]
+            )
+        )
+    )
 
   def custom_msg(self):
     return ''
@@ -133,8 +136,10 @@ class Base:
 
     for layer in self.managed_layers:
       self.update_segments(self.list_segments(layer=layer), loc, layer=layer)
-    self.update_msg('index:%d/%d  batch:%d  %s' %
-                    (self.index, len(self.todo), self.batch, self.custom_msg()))
+    self.update_msg(
+        'index:%d/%d  batch:%d  %s'
+        % (self.index, len(self.todo), self.batch, self.custom_msg())
+    )
 
   def prefetch(self):
     prefetch_states = []
@@ -145,7 +150,8 @@ class Base:
       prefetch_state = copy.deepcopy(self.viewer.state)
       for layer in self.managed_layers:
         prefetch_state.layers[layer].segments = self.list_segments(
-            idx, layer=layer)
+            idx, layer=layer
+        )
       prefetch_state.layout = '3d'
       if self.locations is not None:
         prefetch_state.position = self.locations[idx]
@@ -180,7 +186,8 @@ class ObjectReview(Base):
         the current object if batch == 1.
     """
     super().__init__(
-        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects)
+        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects
+    )
     self.bad = bad
 
     self.viewer.actions.add('next-batch', lambda s: self.next_batch())
@@ -188,7 +195,9 @@ class ObjectReview(Base):
     self.viewer.actions.add('dec-batch', lambda s: self.batch_dec())
     self.viewer.actions.add('inc-batch', lambda s: self.batch_inc())
     self.viewer.actions.add('mark-bad', lambda s: self.mark_bad())
-    self.viewer.actions.add('mark-removed-bad', lambda s: self.mark_removed_bad())
+    self.viewer.actions.add(
+        'mark-removed-bad', lambda s: self.mark_removed_bad()
+    )
     self.viewer.actions.add('toggle-equiv', lambda s: self.toggle_equiv())
 
     with self.viewer.config_state.txn() as s:
@@ -216,7 +225,7 @@ class ObjectReview(Base):
     else:
       self.bad.add(frozenset(sids))
 
-    self.update_msg('marked bad: %r' % (sids, ))
+    self.update_msg('marked bad: %r' % (sids,))
     self.next_batch()
 
   def mark_removed_bad(self):
@@ -224,7 +233,7 @@ class ObjectReview(Base):
     new_bad = original - set(self.viewer.state.layers['seg'].segments)
     if new_bad:
       self.bad |= new_bad
-      self.update_msg('marked bad: %r' % (new_bad, ))
+      self.update_msg('marked bad: %r' % (new_bad,))
 
 
 class ObjectClassification(Base):
@@ -239,7 +248,8 @@ class ObjectClassification(Base):
       num_to_prefetch: number of `objects` to prefetch
     """
     super().__init__(
-        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects)
+        num_to_prefetch=num_to_prefetch, locations=locations, objects=objects
+    )
 
     self.results = defaultdict(set)  # class -> ids
 
@@ -249,7 +259,8 @@ class ObjectClassification(Base):
 
     for key, cls in key_to_class.items():
       self.viewer.actions.add(
-          'classify-%s' % cls, lambda s, cls=cls: self.classify(cls))
+          'classify-%s' % cls, lambda s, cls=cls: self.classify(cls)
+      )
 
     with self.viewer.config_state.txn() as s:
       for key, cls in key_to_class.items():
@@ -332,7 +343,8 @@ class GraphUpdater(Base):
 
     with self.viewer.txn() as s:
       s.layers['split'] = neuroglancer.SegmentationLayer(
-          source=s.layers['seg'].source)
+          source=s.layers['seg'].source
+      )
       s.layers['split'].visible = False
 
   def merge_segments(self):
@@ -341,7 +353,7 @@ class GraphUpdater(Base):
 
   def update_split(self):
     s = copy.deepcopy(self.viewer.state)
-    s.layers['split'].segments = list(self.split_path)[:self.split_index]
+    s.layers['split'].segments = list(self.split_path)[: self.split_index]
     self.viewer.set_state(s)
 
   def inc_split(self):
@@ -363,7 +375,7 @@ class GraphUpdater(Base):
       self.sem.release()
 
   def accept_split(self):
-    edge = self.split_path[self.split_index - 1:self.split_index + 1]
+    edge = self.split_path[self.split_index - 1 : self.split_index + 1]
     if len(edge) < 2:
       return
 
@@ -380,11 +392,11 @@ class GraphUpdater(Base):
     self.viewer.set_state(s)
 
   def start_split(self):
-    self.split_path = nx.shortest_path(self.graph, self.split_objects[0],
-                                       self.split_objects[1])
+    self.split_path = nx.shortest_path(
+        self.graph, self.split_objects[0], self.split_objects[1]
+    )
     self.split_index = 1
-    self.update_msg(
-        'splitting: %s' % ('-'.join(str(x) for x in self.split_path)))
+    self.update_msg('splitting: %s' % '-'.join(str(x) for x in self.split_path))
 
     s = copy.deepcopy(self.viewer.state)
     s.layers['seg'].visible = False
@@ -395,8 +407,7 @@ class GraphUpdater(Base):
   def add_split(self, s):
     if len(self.split_objects) < 2:
       self.split_objects.append(s.selected_values['seg'].value)
-    self.update_msg(
-        'split: %s' % (':'.join(str(x) for x in self.split_objects)))
+    self.update_msg('split: %s' % ':'.join(str(x) for x in self.split_objects))
 
     if len(self.split_objects) == 2:
       self.start_split()
@@ -412,5 +423,5 @@ class GraphUpdater(Base):
     else:
       self.bad.add(frozenset(sids))
 
-    self.update_msg('marked bad: %r' % (sids, ))
+    self.update_msg('marked bad: %r' % (sids,))
     self.next_batch()
