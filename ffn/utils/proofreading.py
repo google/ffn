@@ -44,9 +44,9 @@ class Base:
     """Initializes the Base class for proofreading.
 
     Args:
-        num_to_prefetch: Number of items to prefetch.
-        locations: List of xyz coordinates corresponding to object locations.
-        objects: Object IDs or a dictionary mapping layer names to object IDs.
+      num_to_prefetch: Number of items to prefetch.
+      locations: List of xyz coordinates corresponding to object locations.
+      objects: Object IDs or a dictionary mapping layer names to object IDs.
     """
     self.viewer = neuroglancer.Viewer()
     self.num_to_prefetch = num_to_prefetch
@@ -99,9 +99,9 @@ class Base:
     """Updates segments in Neuroglancer viewer.
 
     Args:
-        segments: List of segment IDs to update.
-        loc: 3D coordinates to set the viewer to.
-        layer: Layer name in Neuroglancer to be updated.
+      segments: List of segment IDs to update.
+      loc: 3D coordinates to set the viewer to.
+      layer: Layer name in Neuroglancer to be updated.
     """
     s = copy.deepcopy(self.viewer.state)
     l = s.layers[layer]
@@ -155,11 +155,11 @@ class Base:
     """Get a list of segment IDs for a given index and layer.
 
     Args:
-        index: Index of segments to list.
-        layer: Layer name to list the segments from.
+      index: Index of segments to list.
+      layer: Layer name to list the segments from.
 
     Returns:
-        List of segment IDs.
+      List of segment IDs.
     """
     if index is None:
       index = self.index
@@ -175,7 +175,7 @@ class Base:
     """Generate a custom message for the current state.
 
     Returns:
-        A custom message string.
+      A custom message string.
     """
     return ""
 
@@ -223,10 +223,10 @@ class Base:
     """Return coordinates of the cursor position from a neuroglancer action state
 
     Args:
-        action_state : Neuroglancer action state
+      action_state : Neuroglancer action state
 
     Returns:
-        (x, y, z) cursor position
+      (x, y, z) cursor position
     """
     try:
       cursor_position = [int(x) for x in action_state.mouse_voxel_coordinates]
@@ -297,7 +297,7 @@ class ObjectReview(Base):
     """Construct a custom message for the current state.
 
     Returns:
-        A formatted message indicating the number of bad objects.
+      A formatted message indicating the number of bad objects.
     """
     return "num_bad: %d" % len(self.bad)
 
@@ -334,22 +334,22 @@ class ObjectReview(Base):
 class ObjectReviewStoreLocation(ObjectReview):
   """Class to mark and store locations of errors in the segmentation
 
-  To mark a merger, move the cursor to a spot of the false merger and press 'w'.
-  Then, move the cursor to a spot within the object that should belong to a
-  separate object and press 'shift + W'. Yellow point annotations indicate the
-  merger. For split errors, proceed in similar manner but press 'd' and
+  To mark a merger, move the cursor to a spot of the false merger and press
+  'w'. Then, move the cursor to a spot within the object that should belong to
+  a separate object and press 'shift + W'. Yellow point annotations indicate
+  the merger. For split errors, proceed in similar manner but press 'd' and
   'shift + D', which will display blue annotations.
   Marked locations can be deleted either by pressing 'ctrl + Z' (to delete the
   last marked location) or by hovering the cursor over one of the point
   annotations and pressing 'ctrl + v'.
 
   Attributes:
-      seg_error_coordinates: A mapping of annotation identifier substrings to
-                             error coordinate pairs.
-          Example: {'m0': [[x1,y1,z1],[x2,y2,z2]], 's0':[[x1,y1,z1],[x2,y2,z2]], ...}
-          - Keys starting with 'm' indicate merge errors.
-          - Keys starting with 's' indicate split errors.
-      temp_coord_list: Temporary storage for coordinates.
+    seg_error_coordinates: A mapping of annotation identifier substrings to
+                           error coordinate pairs.
+    Example: {'m0': [[x1,y1,z1],[x2,y2,z2]], 's0':[[x1,y1,z1],[x2,y2,z2]], ...}
+      - Keys starting with 'm' indicate merge errors.
+      - Keys starting with 's' indicate split errors.
+    temp_coord_list: Temporary storage for coordinates.
   """
 
   def __init__(
@@ -362,10 +362,10 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Initialize the ObjectReviewStoreLocation class.
 
     Args:
-        objects: A list of objects.
-        bad: A list of bad objects or markers.
-        seg_error_coordinates: A dictionary of error coordinates.
-        load_annotations: A flag to indicate if annotations should be loaded.
+      objects: A list of objects.
+      bad: A list of bad objects or markers.
+      seg_error_coordinates: A dictionary of error coordinates.
+      load_annotations: A flag to indicate if annotations should be loaded.
     """
     super(ObjectReviewStoreLocation, self).__init__(objects, bad)
     self.seg_error_coordinates = seg_error_coordinates
@@ -408,10 +408,10 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Generate a unique identifier for an error based on its type.
 
     Args:
-        mode: Error type, either 'merge' or 'split'.
+      mode: Error type, either 'merge' or 'split'.
 
     Returns:
-        A unique identifier string.
+      A unique identifier string.
     """
     id_ = mode[0]
     if any(self.seg_error_coordinates):
@@ -430,9 +430,9 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Store error locations.
 
     Args:
-        action_state: State of the viewer during the action.
-        mode: Type of the error ('merger' or 'split').
-        idx: Indicates if it's the first or second coordinate (0 or 1).
+      action_state: State of the viewer during the action.
+      mode: Type of the error ('merger' or 'split').
+      idx: Indicates if it's the first or second coordinate (0 or 1).
     """
     location = self.get_cursor_position(action_state)
     if location is None:
@@ -464,8 +464,8 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Annotate the error locations in the viewer.
 
     Args:
-        coordinate_lst: List of coordinates to be annotated.
-        id_: Unique identifier for the error.
+      coordinate_lst: List of coordinates to be annotated.
+      id_: Unique identifier for the error.
     """
     for i, coord in enumerate(coordinate_lst):
       annotation_id = id_ + f"_{i}"
@@ -477,8 +477,8 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Create a point annotation in the viewer.
 
     Args:
-        coordinate: 3D coordinate of the annotation point.
-        annotation_id: Unique identifier for the annotation.
+      coordinate: 3D coordinate of the annotation point.
+      annotation_id: Unique identifier for the annotation.
     """
     if annotation_id.startswith("m"):
       color = "#fae505"
@@ -497,10 +497,10 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Retrieve the ID of a selected annotation.
 
     Args:
-        action_state: neuroglancer.viewer_config_state.ActionState.
+      action_state: neuroglancer.viewer_config_state.ActionState.
 
     Returns:
-        The selected object's ID or None if retrieval fails.
+      The selected object's ID or None if retrieval fails.
     """
     try:
       selection_state = action_state.selected_values["annotation"].to_json()
@@ -517,7 +517,7 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Delete the error location pair associated with the annotation at the cursor position
 
     Args:
-        action_state: State of the viewer during the action.
+      action_state: State of the viewer during the action.
     """
     id_ = self.get_annotation_id(action_state)
     if id_ is None:
@@ -533,7 +533,7 @@ class ObjectReviewStoreLocation(ObjectReview):
     """Delete specified annotations from the viewer.
 
     Args:
-        to_remove: list of annotation IDs to be removed.
+      to_remove: list of annotation IDs to be removed.
     """
     with self.viewer.txn() as s:
       annotations = s.layers["annotation"].annotations
