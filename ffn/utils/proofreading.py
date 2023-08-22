@@ -367,7 +367,7 @@ class ObjectReviewStoreLocation(ObjectReview):
       seg_error_coordinates: A dictionary of error coordinates.
       load_annotations: A flag to indicate if annotations should be loaded.
     """
-    super(ObjectReviewStoreLocation, self).__init__(objects, bad)
+    super().__init__(objects, bad)
     self.seg_error_coordinates = seg_error_coordinates
     if load_annotations and seg_error_coordinates:
       for k, v in seg_error_coordinates.items():
@@ -459,19 +459,19 @@ class ObjectReviewStoreLocation(ObjectReview):
       self.temp_coord_list = []
 
   def annotate_error_locations(
-      self, coordinate_lst: list[list[int]], id_: str
+      self, coordinates: list[list[int]], error_id: str
   ) -> None:
     """Annotate the error locations in the viewer.
 
     Args:
-      coordinate_lst: List of coordinates to be annotated.
-      id_: Unique identifier for the error.
+      coordinates: List of coordinates to be annotated.
+      error_id: Unique identifier for the error.
     """
-    for i, coord in enumerate(coordinate_lst):
-      annotation_id = id_ + f"_{i}"
-      self.mk_point_annotation(coord, annotation_id)
+    for i, coord in enumerate(coordinates):
+      annotation_id = f"{error_id}_{i}"
+      self.make_point_annotation(coord, annotation_id)
 
-  def mk_point_annotation(
+  def make_point_annotation(
       self, coordinate: list[int], annotation_id: str
   ) -> None:
     """Create a point annotation in the viewer.
@@ -488,8 +488,7 @@ class ObjectReviewStoreLocation(ObjectReview):
         id=annotation_id, point=coordinate, props=[color]
     )
     with self.viewer.txn() as s:
-      annotations = s.layers["annotation"].annotations
-      annotations.append(annotation)
+      s.layers["annotation"].annotations.append(annotation)
 
   def get_annotation_id(
       self, action_state: neuroglancer.viewer_config_state.ActionState
@@ -519,17 +518,17 @@ class ObjectReviewStoreLocation(ObjectReview):
     Args:
       action_state: State of the viewer during the action.
     """
-    id_ = self.get_annotation_id(action_state)
-    if id_ is None:
+    ann_id = self.get_annotation_id(action_state)
+    if ann_id is None:
       return
 
-    target_key = id_[:2]
+    target_key, _ = ann_id.split("_")
     del self.seg_error_coordinates[target_key]
 
-    to_remove = [target_key + "_0", target_key + "_1"]
+    to_remove = frozenset([target_key + "_0", target_key + "_1"])
     self.delete_annotation(to_remove)
 
-  def delete_annotation(self, to_remove: list[str]) -> None:
+  def delete_annotation(self, to_remove: frozenset[str]) -> None:
     """Delete specified annotations from the viewer.
 
     Args:
@@ -540,9 +539,9 @@ class ObjectReviewStoreLocation(ObjectReview):
       annotations = [a for a in annotations if a.id not in to_remove]
       s.layers["annotation"].annotations = annotations
 
-  def delete_last_location(self):
+  def delete_last_location(self) -> None:
     """Delete the last error location pair tagged."""
-    last_key = list(self.seg_error_coordinates.keys())[-1]
+    last_key = next(reversed(self.seg_error_coordinates))
     del self.seg_error_coordinates[last_key]
 
     to_remove = [last_key + "_0", last_key + "_1"]
