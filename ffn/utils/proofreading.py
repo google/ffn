@@ -544,7 +544,7 @@ class ObjectReviewStoreLocation(ObjectReview):
     last_key = next(reversed(self.seg_error_coordinates))
     del self.seg_error_coordinates[last_key]
 
-    to_remove = [last_key + "_0", last_key + "_1"]
+    to_remove = frozenset([last_key + "_0", last_key + "_1"])
     self.delete_annotation(to_remove)
 
 
