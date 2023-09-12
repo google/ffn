@@ -24,7 +24,7 @@ import threading
 import networkx as nx
 import neuroglancer
 
-from typing import Union, Optional, Iterable, Any
+from typing import Union, Optional, Sequence
 
 
 class Base:
@@ -38,8 +38,8 @@ class Base:
   def __init__(
       self,
       num_to_prefetch: int = 10,
-      locations: Optional[Iterable[tuple[int, int, int]]] = None,
-      objects: Optional[Union[dict[str, Any], Iterable[int]]] = None,
+      locations: Optional[list[Sequence[int]]] = None,
+      objects: Optional[Union[dict[str, int], Sequence[int]]] = None,
   ):
     """Initializes the Base class for proofreading.
 
@@ -68,7 +68,7 @@ class Base:
 
     self.set_init_state()
 
-  def _set_todo(self, objects: Union[list[str, Any], Iterable[int]]) -> None:
+  def _set_todo(self, objects: Union[dict[str, int], Sequence[int]]) -> None:
     """Private method to set the todo list."""
     for o in objects:
       if isinstance(o, collections.abc.Mapping):
@@ -93,7 +93,7 @@ class Base:
   def update_segments(
       self,
       segments: list[int],
-      loc: Optional[tuple[int, int, int]] = None,
+      loc: Optional[Sequence[int]] = None,
       layer: str = "seg",
   ) -> None:
     """Updates segments in Neuroglancer viewer.
@@ -246,10 +246,10 @@ class ObjectReview(Base):
 
   def __init__(
       self,
-      objects: Iterable,
-      bad: list,
+      objects: Union[dict[str, int], Sequence[int]],
+      bad: set,
       num_to_prefetch: int = 10,
-      locations: Optional[Iterable[tuple[int, int, int]]] = None,
+      locations: Optional[list[Sequence[int]]] = None,
   ):
     """Constructor.
 
@@ -355,8 +355,8 @@ class ObjectReviewStoreLocation(ObjectReview):
   def __init__(
       self,
       objects: list,
-      bad: list,
-      seg_error_coordinates: Optional[list[str, list[list[int]]]] = {},
+      bad: set,
+      seg_error_coordinates: Optional[dict[str, list]] = {},
       load_annotations: bool = False,
   ) -> None:
     """Initialize the ObjectReviewStoreLocation class.
