@@ -24,7 +24,7 @@ import threading
 import networkx as nx
 import neuroglancer
 
-from typing import Union, Optional, Sequence
+from typing import Union, Optional, Sequence, cast
 
 
 class Base:
@@ -92,7 +92,7 @@ class Base:
 
   def update_segments(
       self,
-      segments: list[int],
+      segments: Union[set[int], list[int]],
       loc: Optional[Sequence[int]] = None,
       layer: str = "seg",
   ) -> None:
@@ -112,7 +112,7 @@ class Base:
     else:
       l.equivalences.clear()
       for a in self.todo[self.index : self.index + self.batch]:
-        a = [aa[layer] for aa in a]
+        a = [cast(dict, aa)[layer] for aa in a]
         l.equivalences.union(*a)
 
     if loc is not None:
@@ -151,7 +151,7 @@ class Base:
 
   def list_segments(
       self, index: Optional[int] = None, layer: str = "seg"
-  ) -> list[int]:
+  ) -> list:
     """Get a list of segment IDs for a given index and layer.
 
     Args:
@@ -356,7 +356,7 @@ class ObjectReviewStoreLocation(ObjectReview):
       self,
       objects: list,
       bad: set,
-      seg_error_coordinates: Optional[dict[str, list]] = {},
+      seg_error_coordinates: dict[str, list] = {},
       load_annotations: bool = False,
   ) -> None:
     """Initialize the ObjectReviewStoreLocation class.
@@ -373,6 +373,7 @@ class ObjectReviewStoreLocation(ObjectReview):
       for k, v in seg_error_coordinates.items():
         self.annotate_error_locations(v, k)
     self.temp_coord_list = []
+    self.cur_error_type = None
 
   def set_keybindings(self) -> None:
     """Set key bindings for the viewer."""
@@ -415,7 +416,7 @@ class ObjectReviewStoreLocation(ObjectReview):
     """
     id_ = mode[0]
     if any(self.seg_error_coordinates):
-      counter = int(max([x[1:] for x in self.seg_error_coordinates.keys()])) + 1
+      counter = max([int(x[1:]) for x in self.seg_error_coordinates.keys()]) + 1
     else:
       counter = 0
     id_ = id_ + str(counter)
@@ -442,8 +443,14 @@ class ObjectReviewStoreLocation(ObjectReview):
       self.update_msg("You have not entered a first coord yet")
       return
 
-    if idx == 0 and self.temp_coord_list:
-      self.temp_coord_list = []
+    if idx == 1 and self.cur_error_type != mode:
+      self.update_msg("error type of first and second location do not match")
+      return
+
+    if idx == 0:
+      self.cur_error_type = mode
+      if self.temp_coord_list:
+        self.temp_coord_list = []
 
     self.temp_coord_list.append(location)
 
@@ -457,6 +464,7 @@ class ObjectReviewStoreLocation(ObjectReview):
       self.seg_error_coordinates.update({identifier: self.temp_coord_list})
       self.annotate_error_locations(self.temp_coord_list, identifier)
       self.temp_coord_list = []
+      self.cur_error_type = None
 
   def annotate_error_locations(
       self, coordinates: list[list[int]], error_id: str
@@ -541,7 +549,7 @@ class ObjectReviewStoreLocation(ObjectReview):
 
   def delete_last_location(self) -> None:
     """Delete the last error location pair tagged."""
-    last_key = next(reversed(self.seg_error_coordinates))
+    last_key = next(reversed(self.seg_error_coordinates.keys()))
     del self.seg_error_coordinates[last_key]
 
     to_remove = frozenset([last_key + "_0", last_key + "_1"])
