@@ -20,11 +20,14 @@ from collections import defaultdict
 import copy
 import itertools
 import threading
+from typing import Iterable, Optional, Union, Sequence, cast
 
 import networkx as nx
 import neuroglancer
 
-from typing import Union, Optional, Sequence, cast
+
+Point = tuple[int, int, int]
+ObjectItem = int | Iterable[int] | dict[str, Iterable[int]]
 
 
 class Base:
@@ -38,8 +41,8 @@ class Base:
   def __init__(
       self,
       num_to_prefetch: int = 10,
-      locations: Optional[list[Sequence[int]]] = None,
-      objects: Optional[Union[dict[str, int], Sequence[int]]] = None,
+      locations: Optional[Iterable[Point]] = None,
+      objects: Optional[Iterable[ObjectItem]] = None,
   ):
     """Initializes the Base class for proofreading.
 
@@ -51,8 +54,10 @@ class Base:
     self.viewer = neuroglancer.Viewer()
     self.num_to_prefetch = num_to_prefetch
 
-    self.managed_layers = set(["seg"])
-    self.todo = []  # items are maps from layer name to lists of segment IDs
+    self.managed_layers = set(['seg'])
+    self.todo: list[dict[str, list[int]]] = (
+        []
+    )  # items are maps from layer name to lists of segment IDs
     if objects is not None:
       self._set_todo(objects)
 
@@ -62,20 +67,20 @@ class Base:
 
     if locations is not None:
       self.locations = list(locations)
-      assert len(self.todo) == len(locations)
+      assert len(self.todo) == len(self.locations)
     else:
       self.locations = None
 
     self.set_init_state()
 
-  def _set_todo(self, objects: Union[dict[str, int], Sequence[int]]) -> None:
+  def _set_todo(self, objects:Iterable[ObjectItem]) -> None:
     """Private method to set the todo list."""
     for o in objects:
       if isinstance(o, collections.abc.Mapping):
-        self.todo.append(o)
+        self.todo.append({k: list(v) for k, v in o.items()})
         self.managed_layers |= set(o.keys())
       elif isinstance(o, collections.abc.Iterable):
-        self.todo.append({"seg": o})
+        self.todo.append({'seg': list(o)})
       else:
         self.todo.append({"seg": [o]})
 
@@ -559,7 +564,13 @@ class ObjectReviewStoreLocation(ObjectReview):
 class ObjectClassification(Base):
   """Base class for object classification."""
 
-  def __init__(self, objects, key_to_class, num_to_prefetch=10, locations=None):
+  def __init__(
+      self,
+      objects: Iterable[ObjectItem],
+      key_to_class,
+      num_to_prefetch: int = 10,
+      locations=None,
+  ):
     """Constructor.
 
     Args:
@@ -629,7 +640,9 @@ class GraphUpdater(Base):
   (according to the current state of the agglomeraton graph).
   """
 
-  def __init__(self, graph, objects, bad, num_to_prefetch=0):
+  def __init__(
+      self, graph, objects: Iterable[ObjectItem], bad, num_to_prefetch: int = 0
+  ):
     super().__init__(objects=objects, num_to_prefetch=num_to_prefetch)
     self.graph = graph
     self.split_objects = []
