@@ -354,6 +354,14 @@ class Canvas(object):
 
     return True
 
+  def _get_image(self, pos):
+    """Returns the image for the FOV centered at 'pos'."""
+    # Top-left corner of the FoV.
+    start = np.array(pos) - self.margin
+    end = start + self._input_image_size
+    img = self.image[tuple(slice(s, e) for s, e in zip(start, end))]
+    return img
+
   def predict(self, pos, logit_seed, extra_fetches):
     """Runs a single step of FFN prediction.
 
@@ -368,10 +376,8 @@ class Canvas(object):
         dict of additional fetches corresponding to extra_fetches
     """
     with timer_counter(self.counters, 'predict'):
-      # Top-left corner of the FoV.
-      start = np.array(pos) - self.margin
-      end = start + self._input_image_size
-      img = self.image[[slice(s, e) for s, e in zip(start, end)]]
+      with timer_counter(self.counters, 'get-image'):
+        img = self._get_image(pos)
 
       # Record the amount of time spent on non-prediction tasks.
       if self.t_last_predict is not None:
@@ -410,7 +416,8 @@ class Canvas(object):
       start = np.array(pos) - off
       end = start + self._input_seed_size
       logit_seed = np.array(
-          self.seed[[slice(s, e) for s, e in zip(start, end)]])
+          self.seed[tuple(slice(s, e) for s, e in zip(start, end))]
+      )
       init_prediction = np.isnan(logit_seed)
       logit_seed[init_prediction] = np.float32(self.options.pad_value)
 
@@ -437,7 +444,7 @@ class Canvas(object):
 
       start += self._pred_delta
       end = start + self._pred_size
-      sel = [slice(s, e) for s, e in zip(start, end)]
+      sel = tuple(slice(s, e) for s, e in zip(start, end))
 
       # Bias towards oversegmentation by making it impossible to reverse
       # disconnectedness predictions in the course of inference.
@@ -577,7 +584,7 @@ class Canvas(object):
         # Too close to an existing segment?
         low = np.array(pos) - mbd
         high = np.array(pos) + mbd + 1
-        sel = [slice(s, e) for s, e in zip(low, high)]
+        sel = tuple(slice(s, e) for s, e in zip(low, high))
         if np.any(self.segmentation[sel] > 0):
           logging.debug('Too close to existing segment.')
           self.segmentation[pos] = -1
@@ -610,9 +617,13 @@ class Canvas(object):
         # covering the area that was actually changed by the FFN. In case the
         # segment is going to be rejected due to small size, this can
         # significantly reduce processing time.
-        sel = [slice(max(s, 0), e + 1) for s, e in zip(
-            self._min_pos - self._pred_size // 2,
-            self._max_pos + self._pred_size // 2)]
+        sel = tuple(
+            slice(max(s, 0), e + 1)
+            for s, e in zip(
+                self._min_pos - self._pred_size // 2,  #
+                self._max_pos + self._pred_size // 2,
+            )
+        )
 
         # We only allow creation of new segments in areas that are currently
         # empty.
