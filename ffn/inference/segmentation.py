@@ -14,10 +14,8 @@
 # ==============================================================================
 """Routines for manipulating numpy arrays of segmentation data."""
 
-from collections import Counter
-
+from connectomics.segmentation import labels
 import numpy as np
-import skimage.measure
 
 
 def clear_dust(data: np.ndarray, min_size: int = 10):
@@ -60,36 +58,6 @@ def reduce_id_bits(segmentation: np.ndarray):
   elif max_id <= np.iinfo(np.uint32).max:
     return segmentation.astype(np.uint32)
   return segmentation
-
-
-def split_disconnected_components(labels: np.ndarray, connectivity=1):
-  """Relabels the connected components of a 3-D integer array.
-
-  Connected components are determined based on 6-connectivity, where two
-  neighboring positions are considering part of the same component if they have
-  identical labels.
-
-  The label 0 is treated specially: all positions labeled 0 in the input are
-  labeled 0 in the output, regardless of whether they are contiguous.
-
-  Connected components of the input array (other than segment id 0) are given
-  consecutive ids in the output, starting from 1.
-
-  Args:
-    labels: 3-D integer numpy array.
-    connectivity: 1, 2, or 3; for 6-, 18-, or 26-connectivity respectively.
-
-  Returns:
-    The relabeled numpy array, same dtype as `labels`.
-  """
-  has_zero = 0 in labels
-  fixed_labels = skimage.measure.label(
-      labels, connectivity=connectivity, background=0)
-  if has_zero or (not has_zero and 0 in fixed_labels):
-    if np.any((fixed_labels == 0) != (labels == 0)):
-      fixed_labels[...] += 1
-      fixed_labels[labels == 0] = 0
-  return np.cast[labels.dtype](fixed_labels)
 
 
 def clean_up(seg: np.ndarray,
@@ -153,7 +121,7 @@ def clean_up_and_count(seg: np.ndarray,
     seg_orig = seg.copy()
 
   if split_cc:
-    seg[...] = split_disconnected_components(seg, connectivity)
+    seg[...] = labels.split_disconnected_components(seg, connectivity)
   if min_size > 0:
     clear_dust(seg, min_size)
 
