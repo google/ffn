@@ -112,7 +112,7 @@ def atomic_file(path, mode='w+b'):
   gfile.rename('%s.tmp' % path, path, overwrite=True)
 
 
-def quantize_probability(prob):
+def quantize_probability(prob: np.ndarray) -> np.ndarray:
   """Quantizes a probability map into a byte array."""
   ret = np.digitize(prob, np.linspace(0.0, 1.0, 255))
 
@@ -121,7 +121,7 @@ def quantize_probability(prob):
   return ret.astype(np.uint8)
 
 
-def dequantize_probability(prob):
+def dequantize_probability(prob: np.ndarray) -> np.ndarray:
   """Dequantizes a byte array representing a probability map."""
   dq = 1.0 / 255
   ret = ((prob - 0.5) * dq).astype(np.float32)

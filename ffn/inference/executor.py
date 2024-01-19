@@ -18,26 +18,15 @@ Contains implementations of the `BatchExecutor` interface, which takes care
 of actually evaluating the FFN predictions.
 """
 
+import _thread as thread
+from concurrent import futures
 import logging
 import os
-try:
-  import Queue as queue
-except ImportError:  # for Python 3 compat
-  import queue
+import queue
 import threading
 import time
-
-from concurrent import futures
 import numpy as np
 from .inference_utils import timer_counter
-
-
-# pylint:disable=g-import-not-at-top
-try:
-  import thread
-except ImportError:  # for Python 3 compat
-  import _thread as thread
-# pylint:enable=g-import-not-at-top
 
 
 class BatchExecutor(object):
@@ -163,7 +152,8 @@ class ThreadingBatchExecutor(BatchExecutor):
   def stop_server(self):
     logging.info('Requesting executor shutdown.')
     self.input_queue.put('exit')
-    self.th_executor.join()
+    if self.th_executor is not None:
+      self.th_executor.join()
     logging.info('Executor shutdown complete.')
 
   def _run_executor(self):

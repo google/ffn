@@ -28,7 +28,7 @@ from . import storage
 # TODO(mjanusz): Drop this requirement or provide a wrapper class for the MR
 # counter so that this is no longer necessary.
 # pylint: disable=invalid-name
-class StatCounter(object):
+class StatCounter:
   """Stat counter with a MR counter interface."""
 
   def __init__(self, update, name, parent=None):
@@ -77,8 +77,7 @@ class StatCounter(object):
     self.IncrementBy(x_diff, export=export)
 
   def __repr__(self):
-    return 'StatCounter(total=%g, min=%g, hour=%g)' % (self.value, self.value60,
-                                                       self.value1h)
+    return 'StatCounter(total=%g)' % (self.value)
 
   @property
   def value(self):
@@ -90,10 +89,21 @@ MSEC_IN_SEC = 1000
 
 
 @contextlib.contextmanager
-def timer_counter(counters, name):
+def timer_counter(counters, name, export=True):
+  """Creates a counter tracking time spent in the context.
+
+  Args:
+    counters: Counters object
+    name: counter name
+    export: whether to export counter via streamz
+
+  Yields:
+    tuple of two counters, to track number of calls and time spent on them,
+    respectively
+  """
   assert isinstance(counters, Counters)
-  counter = counters[name + '-calls']
-  timer = counters[name + '-time-ms']
+  counter = counters.get(name + '-calls', export)
+  timer = counters.get(name + '-time-ms', export)
   start_time = time.time()
   try:
     yield timer, counter
@@ -103,7 +113,7 @@ def timer_counter(counters, name):
     timer.IncrementBy(dt)
 
 
-class TimedIter(object):
+class TimedIter:
   """Wraps an iterator with a timing counter."""
 
   def __init__(self, it, counters, counter_name):
@@ -123,7 +133,7 @@ class TimedIter(object):
     return self.__next__()
 
 
-class Counters(object):
+class Counters:
   """Container for counters."""
 
   def __init__(self, parent=None):
@@ -143,7 +153,7 @@ class Counters(object):
       return self._counters[name]
 
   def __iter__(self):
-    return self._counters.items()
+    return iter(self._counters.items())
 
   def _make_counter(self, name):
     return StatCounter(self.update_status, name)
