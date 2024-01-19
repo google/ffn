@@ -15,10 +15,9 @@
 """Classes to support ad-hoc alignment for inference."""
 
 import numpy as np
-from ..utils import bounding_box
 
 
-class Alignment(object):
+class Alignment:
   """Base class to represent local ad-hoc alignment of Subvolumes.
 
   This base class implements an identity / no-op alignment.

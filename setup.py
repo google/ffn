@@ -40,11 +40,13 @@ setup(
     long_description=open('README.md').read(),
     install_requires=[
         'connectomics',
+        'edt',
         'pandas',
         'scikit-image',
         'scipy',
         'numpy',
         'tensorflow<2',
+        'tensorstore',
         'h5py',
         'Pillow',
         'absl-py',

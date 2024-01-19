@@ -21,7 +21,9 @@ import json
 import os
 import re
 import tempfile
+from typing import Optional
 
+from connectomics.common import bounding_box
 import h5py
 import numpy as np
 from tensorflow.io import gfile
@@ -29,7 +31,6 @@ import tensorstore as ts
 
 from . import align
 from . import segmentation
-from ..utils import bounding_box
 
 OriginInfo = namedtuple('OriginInfo', ['start_zyx', 'iters', 'walltime_sec'])
 
@@ -293,12 +294,12 @@ def clip_subvolume_to_bounds(corner, size, volume):
     volume_size = volume_size[1:]
   volume_bounds = bounding_box.BoundingBox(start=(0, 0, 0), size=volume_size)
   subvolume_bounds = bounding_box.BoundingBox(start=corner, size=size)
-  clipped_bounds = bounding_box.intersection(volume_bounds, subvolume_bounds)
+  clipped_bounds = volume_bounds.intersection(subvolume_bounds)
   return clipped_bounds.start, clipped_bounds.size
 
 
 def build_mask(masks, corner, subvol_size, mask_volume_map=None,
-               image=None, alignment=None):
+               image: Optional[np.ndarray] = None, alignment=None):
   """Builds a boolean mask.
 
   Args:
@@ -341,6 +342,7 @@ def build_mask(masks, corner, subvol_size, mask_volume_map=None,
           src_corner, bool_mask, corner, subvol_size)
     else:
       if source_type == 'image':
+        assert image is not None
         channels = config.image.channels
         mask = image[np.newaxis, ...]
       elif source_type == 'volume':
