@@ -15,11 +15,11 @@
 """Tensorflow Python ops and utilities for generating network inputs."""
 
 import re
+
+from connectomics.common import bounding_box
 import numpy as np
 import tensorflow.compat.v1 as tf
-
 from tensorflow.io import gfile
-from ..utils import bounding_box
 
 
 def create_filename_queue(coordinates_file_pattern, shuffle=True):
@@ -139,7 +139,7 @@ def load_from_numpylike(coordinates, volume_names, shape, volume_map,
     volume = volume_map[volname.decode('ascii')]
     # Get data, including all channels if volume is 4d.
     starts = np.array(coord) - start_offset
-    slc = bounding_box.BoundingBox(start=starts, size=shape).to_slice()
+    slc = bounding_box.BoundingBox(start=starts, size=shape).to_slice3d()
     if volume.ndim == 4:
       slc = np.index_exp[:] + slc
     data = volume[slc]

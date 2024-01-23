@@ -48,7 +48,7 @@ def xy_transpose(data, decision):
   """
   with tf.name_scope('augment_xy_transpose'):
     rank = data.get_shape().ndims
-    perm = range(rank)
+    perm = list(range(rank))
     perm[rank - 3], perm[rank - 2] = perm[rank - 2], perm[rank - 3]
     return tf.cond(decision,
                    lambda: tf.transpose(data, perm),
