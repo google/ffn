@@ -238,7 +238,7 @@ def containing(*boxes):
   """
   if not boxes:
     raise ValueError('At least one bounding box must be specified')
-  boxes_objs = map(BoundingBox, boxes)
+  boxes_objs = list(map(BoundingBox, boxes))
   start = boxes_objs[0].start
   end = boxes_objs[0].end
   for box in boxes_objs[1:]:

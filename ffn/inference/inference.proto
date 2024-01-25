@@ -142,11 +142,6 @@ message InferenceOptions {
   // Threshold that has to be matched or exceeded at the center of a candidate
   // FoV position in order for the FoV to be moved to that position.
   optional float move_threshold = 3;
-  // Average (over the FoV) magnitude of per voxel probability change between
-  // subsequent FFN iterations, below which to stop iterating the FFN further
-  // without moving the FoV. Note that setting this to a positive value will
-  // cause at least two FFN inference calls to be made for every FoV position.
-  optional float consistency_threshold = 4;
 
   // Negative values disable the disconnected seed bias. If >= 0, specifies
   // the fraction of voxels within the prediction FoV that need to be active in
@@ -167,14 +162,9 @@ message InferenceOptions {
   // Minimum number of voxels that a segment needs to have in order to be
   // retained in the segmentation.
   optional int32 min_segment_size = 8;
-}
 
-// Settings related to self-prediction halting.
-// TODO(phli): Add more detailed explanations of the parameters and the
-// halting mechanism.
-message SelfPredictionOptions {
-  optional float threshold = 1;
-  optional float orig_threshold = 2 [default = 1.0];
+  reserved 4;
+  reserved "consistency_threshold";
 }
 
 // Settings related to online alignment.
@@ -279,13 +269,14 @@ message InferenceRequest {
   // JSON string with arguments to be passed to the seed policy.
   optional string seed_policy_args = 19;
 
-  optional SelfPredictionOptions self_prediction = 18;
-
   // Options for the online aligner.
   optional AlignmentOptions alignment_options = 20;
 
   // Initial segmentation with which to prepopulate the canvas.
   optional DecoratedVolume init_segmentation = 25;
+
+  reserved 18;
+  reserved "self_prediction";
 
   // Next id: 31.
 }

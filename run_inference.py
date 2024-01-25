@@ -27,8 +27,8 @@ from absl import flags
 from tensorflow.io import gfile
 
 from ffn.utils import bounding_box_pb2
-from ffn.inference import inference
 from ffn.inference import inference_flags
+from ffn.inference import runner as runner_mod
 
 FLAGS = flags.FLAGS
 
@@ -46,7 +46,7 @@ def main(unused_argv):
   bbox = bounding_box_pb2.BoundingBox()
   text_format.Parse(FLAGS.bounding_box, bbox)
 
-  runner = inference.Runner()
+  runner = runner_mod.Runner()
   runner.start(request)
   runner.run((bbox.start.z, bbox.start.y, bbox.start.x),
              (bbox.size.z, bbox.size.y, bbox.size.x))

@@ -21,7 +21,7 @@ import json
 import os
 import re
 import tempfile
-from typing import Optional
+from typing import Any, Optional
 
 from connectomics.common import bounding_box
 import h5py
@@ -33,6 +33,7 @@ from . import align
 from . import segmentation
 
 OriginInfo = namedtuple('OriginInfo', ['start_zyx', 'iters', 'walltime_sec'])
+Volume = Any
 
 
 class SyncAdapter:
@@ -51,7 +52,7 @@ class SyncAdapter:
     return f'{self.__class__.__name__}({repr(self.tstore)})'
 
 
-def decorated_volume(settings, **kwargs):
+def decorated_volume(settings, **kwargs) -> Volume:
   """Converts DecoratedVolume proto object into volume objects.
 
   Args:
@@ -66,6 +67,8 @@ def decorated_volume(settings, **kwargs):
   Raises:
     ValueError: On bad specification.
   """
+  del kwargs
+
   if settings.HasField('volinfo'):
     raise NotImplementedError('VolumeStore operations not available.')
   elif settings.HasField('hdf5'):
