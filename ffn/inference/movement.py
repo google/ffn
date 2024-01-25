@@ -16,9 +16,14 @@
 
 from collections import deque
 import json
+from typing import Optional
 import weakref
+
+from connectomics.common import bounding_box
 import numpy as np
 from scipy.special import logit
+
+from ..training import model as ffn_model
 from ..training.import_util import import_symbol
 
 # Unless stated otherwise, all shape/coordinate triples in this file are in zyx
@@ -34,7 +39,11 @@ from ..training.import_util import import_symbol
 # face, and look at the max probability point in  every connected component
 # within a face. Probably best to implement this in C++ and just use a Python
 # wrapper.
-def get_scored_move_offsets(deltas, prob_map, threshold=0.9):
+def get_scored_move_offsets(
+    deltas: tuple[int, int, int] | np.ndarray,
+    prob_map: np.ndarray,
+    threshold: float = 0.9,
+):
   """Looks for potential moves for a FFN.
 
   The possible moves are determined by extracting probability map values
@@ -45,7 +54,7 @@ def get_scored_move_offsets(deltas, prob_map, threshold=0.9):
     deltas: (z,y,x) tuple of base move offsets for the 3 axes
     prob_map: current probability map as a (z,y,x) numpy array
     threshold: minimum score required at the new FoV center for a move to be
-        considered valid
+      considered valid
 
   Yields:
     tuples of:
@@ -59,8 +68,7 @@ def get_scored_move_offsets(deltas, prob_map, threshold=0.9):
   assert center.size == 3
   # Selects a working subvolume no more than +/- delta away from the current
   # center point.
-  subvol_sel = [slice(c - dx, c + dx + 1) for c, dx
-                in zip(center, deltas)]
+  subvol_sel = [slice(c - dx, c + dx + 1) for c, dx in zip(center, deltas)]
 
   done = set()
   for axis, axis_delta in enumerate(deltas):
@@ -92,7 +100,7 @@ def get_scored_move_offsets(deltas, prob_map, threshold=0.9):
         yield ret
 
 
-class BaseMovementPolicy(object):
+class BaseMovementPolicy:
   """Base class for movement policy queues.
 
   The principal usage is to initialize once with the policy's parameters and
@@ -120,8 +128,11 @@ class BaseMovementPolicy(object):
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     raise StopIteration()
+
+  def next(self):
+    return self.__next__()
 
   def append(self, item):
     self.scored_coords.append(item)
@@ -132,7 +143,7 @@ class BaseMovementPolicy(object):
     Args:
       prob_map: object probability map returned by the FFN (in logit space)
       position: postiion of the center of the FoV where inference was performed
-          (z, y, x)
+        (z, y, x)
     """
     raise NotImplementedError()
 
@@ -167,10 +178,10 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
     self._start_pos = start_pos
 
   def get_state(self):
-    return [(self.scored_coords, self.done_rounded_coords)]
+    return [(self.scored_coords, self.done_rounded_coords, self._start_pos)]
 
   def restore_state(self, state):
-    self.scored_coords, self.done_rounded_coords = state[0]
+    self.scored_coords, self.done_rounded_coords, self._start_pos = state[0]
 
   def __next__(self):
     """Pops positions from queue until a valid one is found and returns it."""
@@ -186,16 +197,13 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
 
     return tuple(coord)
 
-  def next(self):
-    return self.__next__()
-
   def quantize_pos(self, pos):
     """Quantizes the positions symmetrically to a grid downsampled by deltas."""
     # Compute offset relative to the origin of the current segment and
     # shift by half delta size. This ensures that all directions are treated
     # approximately symmetrically -- i.e. the origin point lies in the middle of
     # a cell of the quantized lattice, as opposed to a corner of that cell.
-    rel_pos = (np.array(pos) - self._start_pos)
+    rel_pos = np.array(pos) - self._start_pos
     coord = (rel_pos + self.deltas // 2) // np.maximum(self.deltas, 1)
     return tuple(coord)
 
@@ -204,8 +212,9 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
     qpos = self.quantize_pos(position)
     self.done_rounded_coords.add(qpos)
 
-    scored_coords = get_scored_move_offsets(self.deltas, prob_map,
-                                            threshold=self.score_threshold)
+    scored_coords = get_scored_move_offsets(
+        self.deltas, prob_map, threshold=self.score_threshold
+    )
     scored_coords = sorted(scored_coords, reverse=True)
     for score, rel_coord in scored_coords:
       # convert to whole cube coordinates
@@ -213,7 +222,7 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
       self.scored_coords.append((score, coord))
 
 
-def get_policy_fn(request, ffn_model):
+def get_policy_fn(request, model_info: ffn_model.ModelInfo):
   """Returns a policy class based on the InferenceRequest proto."""
 
   if request.movement_policy_name:
@@ -228,32 +237,40 @@ def get_policy_fn(request, ffn_model):
   else:
     kwargs = {}
   if 'deltas' not in kwargs:
-    kwargs['deltas'] = ffn_model.deltas[::-1]
+    kwargs['deltas'] = model_info.deltas[::-1]
   if 'score_threshold' not in kwargs:
     kwargs['score_threshold'] = logit(request.inference_options.move_threshold)
 
   return lambda canvas: movement_policy_class(canvas, **kwargs)
 
 
-class MovementRestrictor(object):
+class MovementRestrictor:
   """Restricts the movement of the FFN FoV."""
 
-  def __init__(self, mask=None, shift_mask=None, shift_mask_fov=None,
-               shift_mask_threshold=4, shift_mask_scale=1, seed_mask=None):
+  def __init__(
+      self,
+      mask: Optional[np.ndarray] = None,
+      shift_mask: Optional[np.ndarray] = None,
+      shift_mask_fov: Optional[bounding_box.BoundingBox] = None,
+      shift_mask_threshold: int = 4,
+      shift_mask_scale: int = 1,
+      seed_mask: Optional[np.ndarray] = None,
+  ):
     """Initializes the restrictor.
 
     Args:
       mask: 3d ndarray-like of shape (z, y, x); positive values indicate voxels
-          that are not going to be segmented
+        that are not going to be segmented
       shift_mask: 4d ndarray-like of shape (2, z, y, x) representing a 2d shift
-          vector field
+        vector field
       shift_mask_fov: bounding_box.BoundingBox around large shifts in which to
-          restrict movement.  BoundingBox specified as XYZ, start can be
-          negative.
-      shift_mask_threshold: if any component of the shift vector exceeds this
-          value within the FoV, the location will not be segmented
+        restrict movement.  BoundingBox specified as XYZ, start can be negative.
+      shift_mask_threshold: if any component of the shift vector equals or
+        exceeds this value within the FoV, the location will not be segmented
       shift_mask_scale: an integer factor specifying how much larger the pixels
-          of the shift mask are compared to the data set processed by the FFN
+        of the shift mask are compared to the data set processed by the FFN
+      seed_mask: 3d ndarray-like of shape (z, y, x); positive values indicate
+        voxels where seeds are not going to be placed
     """
     self.mask = mask
     self.seed_mask = seed_mask
@@ -261,8 +278,9 @@ class MovementRestrictor(object):
     self._shift_mask_scale = shift_mask_scale
     self.shift_mask = None
     if shift_mask is not None:
-      self.shift_mask = (np.max(np.abs(shift_mask), axis=0) >=
-                         shift_mask_threshold)
+      self.shift_mask = (
+          np.max(np.abs(shift_mask), axis=0) >= shift_mask_threshold
+      )
 
       assert shift_mask_fov is not None
       self._shift_mask_fov_pre_offset = shift_mask_fov.start[::-1]
@@ -306,9 +324,13 @@ class MovementRestrictor(object):
       # Do not allow movement through highly distorted areas, which often
       # result in merge errors. In the simplest case, the distortion magnitude
       # is quantified with a patch-based cross-correlation map.
-      if np.any(self.shift_mask[fov_low[0]:(fov_high[0] + 1),
-                                start[1]:(end[1] + 1),
-                                start[2]:(end[2] + 1)]):
+      if np.any(
+          self.shift_mask[
+              fov_low[0] : (fov_high[0] + 1),
+              start[1] : (end[1] + 1),
+              start[2] : (end[2] + 1),
+          ]
+      ):
         return False
 
     return True

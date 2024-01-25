@@ -41,9 +41,11 @@ class BatchExecutor(object):
     self.active_clients = 0
 
     # Cache input/output sizes.
-    self._input_seed_size = np.array(model.input_seed_size[::-1]).tolist()
-    self._input_image_size = np.array(model.input_image_size[::-1]).tolist()
-    self._pred_size = np.array(model.pred_mask_size[::-1]).tolist()
+    self._input_seed_size = np.array(model.info.input_seed_size[::-1]).tolist()
+    self._input_image_size = np.array(
+        model.info.input_image_size[::-1]
+    ).tolist()
+    self._pred_size = np.array(model.info.pred_mask_size[::-1]).tolist()
 
     self._initialize_model()
 
@@ -111,8 +113,9 @@ class ThreadingBatchExecutor(BatchExecutor):
   """
 
   def __init__(self, model, session, counters, batch_size, expected_clients=1):
-    super(ThreadingBatchExecutor, self).__init__(model, session, counters,
-                                                 batch_size)
+    super(ThreadingBatchExecutor, self).__init__(
+        model, session, counters, batch_size
+    )
     self._lock = threading.Lock()
     self.outputs = {}  # Will be populated by Queues as clients register.
     # Used by clients to communiate with the executor. The protocol is
@@ -131,10 +134,12 @@ class ThreadingBatchExecutor(BatchExecutor):
     self.expected_clients = expected_clients
 
     # Arrays fed to TF.
-    self.input_seed = np.zeros([batch_size] + self._input_seed_size + [1],
-                               dtype=np.float32)
-    self.input_image = np.zeros([batch_size] + self._input_image_size + [1],
-                                dtype=np.float32)
+    self.input_seed = np.zeros(
+        [batch_size] + self._input_seed_size + [1], dtype=np.float32
+    )
+    self.input_image = np.zeros(
+        [batch_size] + self._input_image_size + [1], dtype=np.float32
+    )
     self.th_executor = None
 
   def start_server(self):
@@ -146,7 +151,8 @@ class ThreadingBatchExecutor(BatchExecutor):
     """
     if self.th_executor is None:
       self.th_executor = threading.Thread(
-          target=self._run_executor_log_exceptions)
+          target=self._run_executor_log_exceptions
+      )
       self.th_executor.start()
 
   def stop_server(self):
@@ -166,8 +172,10 @@ class ThreadingBatchExecutor(BatchExecutor):
 
       with timer_counter(self.counters, 'executor-input'):
         ready = []
-        while (len(ready) < min(self.active_clients, self.batch_size) or
-               not self.active_clients):
+        while (
+            len(ready) < min(self.active_clients, self.batch_size)
+            or not self.active_clients
+        ):
           try:
             data = self.input_queue.get(timeout=5)
           except queue.Empty:
@@ -201,9 +209,12 @@ class ThreadingBatchExecutor(BatchExecutor):
     with timer_counter(self.counters, 'executor-inference'):
       try:
         ret = self.session.run(
-            fetches, {
+            fetches,
+            {
                 self.model.input_seed: self.input_seed,
-                self.model.input_patches: self.input_image})
+                self.model.input_patches: self.input_image,
+            },
+        )
       except Exception as e:  # pylint:disable=broad-except
         logging.exception(e)
         # If calling TF didn't work (faulty hardware, misconfiguration, etc),
@@ -215,8 +226,7 @@ class ThreadingBatchExecutor(BatchExecutor):
       with self._lock:
         for i, client_id in enumerate(client_ids):
           try:
-            self.outputs[client_id].put(
-                {k: v[i, ...] for k, v in ret.items()})
+            self.outputs[client_id].put({k: v[i, ...] for k, v in ret.items()})
           except KeyError:
             # This could happen if a client unregistered itself
             # while inference was running.

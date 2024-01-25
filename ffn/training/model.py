@@ -14,36 +14,45 @@
 # ==============================================================================
 """Classes for FFN model definition."""
 
-from typing import Optional
+import dataclasses
 
+import numpy as np
 import tensorflow.compat.v1 as tf
 
 from . import optimizer
 
 
-class FFNModel(object):
-  """Base class for FFN models."""
+@dataclasses.dataclass
+class ModelInfo:
+  """Basic geometric information about the network.
 
-  # Dimensionality of the model (2 or 3).
-  dim: int = None
-
-  ############################################################################
-  # (x, y, z) tuples defining various properties of the network.
-  # Note that 3-tuples should be used even for 2D networks, in which case
-  # the third (z) value is ignored.
-
+  Arrays are (x, y, z), even for 2D models, in which case the z value is
+  ignored.
+  """
   # How far to move the field of view in the respective directions.
-  deltas: tuple[int, int, int] = None
+  deltas: np.ndarray
+
+  # Size of the predicted patch as returned by the model.
+  pred_mask_size: np.ndarray
 
   # Size of the input image and seed subvolumes to be used during inference.
   # This is enough information to execute a single prediction step, without
   # moving the field of view.
-  input_image_size: tuple[int, int, int] = None
-  input_seed_size: tuple[int, int, int] = None
+  input_seed_size: np.ndarray
+  input_image_size: np.ndarray
 
-  # Size of the predicted patch as returned by the model.
-  pred_mask_size: tuple[int, int, int] = None
-  ###########################################################################
+  # For JAX models only: whether the predicted seed should be added to
+  # its initial state.
+  additive: bool = False
+
+
+class FFNModel:
+  """Base class for FFN models."""
+
+  info: ModelInfo
+
+  # Dimensionality of the model (2 or 3).
+  dim: int = None
 
   # TF op to compute loss optimized during training. This should include all
   # loss components in case more than just the pixelwise loss is used.
@@ -52,23 +61,21 @@ class FFNModel(object):
   # TF op to call to perform loss optimization on the model.
   train_op = None
 
-  def __init__(
-      self,
-      deltas: tuple[int, int, int],
-      batch_size: Optional[int] = None,
-      define_global_step: bool = True,
-  ):
+  def __init__(self,
+               info: ModelInfo,
+               batch_size=None,
+               define_global_step=True):
     assert self.dim is not None
 
-    self.deltas = deltas
+    self.info = info
     self.batch_size = batch_size
 
     # Initialize the shift collection. This is used during training with the
     # fixed step size policy.
     self.shifts = []
-    for dx in (-self.deltas[0], 0, self.deltas[0]):
-      for dy in (-self.deltas[1], 0, self.deltas[1]):
-        for dz in (-self.deltas[2], 0, self.deltas[2]):
+    for dx in (-self.info.deltas[0], 0, self.info.deltas[0]):
+      for dy in (-self.info.deltas[1], 0, self.info.deltas[1]):
+        for dz in (-self.info.deltas[2], 0, self.info.deltas[2]):
           if dx == 0 and dy == 0 and dz == 0:
             continue
           self.shifts.append((dx, dy, dz))
@@ -88,43 +95,22 @@ class FFNModel(object):
     # If specified, should have the same shape as self.labels.
     self.loss_weights = None
 
-    self.logits = None  # type: tf.Operation
+    # Updated part of the seed, in logit form.
+    self.logits: tf.Operation = None
 
     # List of image tensors to save in summaries. The images are concatenated
     # along the X axis.
     self._images = []
-
-  def set_uniform_io_size(self, patch_size):
-    """Initializes unset input/output sizes to 'patch_size', sets input shapes.
-
-    This assumes that the inputs and outputs are of equal size, and that exactly
-    one step is executed in every direction during training.
-
-    Args:
-      patch_size: (x, y, z) specifying the input/output patch size
-
-    Returns:
-      None
-    """
-    if self.pred_mask_size is None:
-      self.pred_mask_size = patch_size
-    if self.input_seed_size is None:
-      self.input_seed_size = patch_size
-    if self.input_image_size is None:
-      self.input_image_size = patch_size
-    self.set_input_shapes()
 
   def set_input_shapes(self):
     """Sets the shape inference for input_seed and input_patches.
 
     Assumes input_seed_size and input_image_size are already set.
     """
-    self.input_seed.set_shape(
-        [self.batch_size] + list(self.input_seed_size[::-1]) + [1]
-    )
-    self.input_patches.set_shape(
-        [self.batch_size] + list(self.input_image_size[::-1]) + [1]
-    )
+    self.input_seed.set_shape([self.batch_size] +
+                              list(self.info.input_seed_size[::-1]) + [1])
+    self.input_patches.set_shape([self.batch_size] +
+                                 list(self.info.input_image_size[::-1]) + [1])
 
   def set_up_sigmoid_pixelwise_loss(self, logits):
     """Sets up the loss function of the model."""
@@ -132,8 +118,7 @@ class FFNModel(object):
     assert self.loss_weights is not None
 
     pixel_loss = tf.nn.sigmoid_cross_entropy_with_logits(
-        logits=logits, labels=self.labels
-    )
+        logits=logits, labels=self.labels)
     pixel_loss *= self.loss_weights
     self.loss = tf.reduce_mean(pixel_loss)
     tf.summary.scalar('pixel_loss', self.loss)
@@ -146,6 +131,8 @@ class FFNModel(object):
     tf.summary.scalar('optimizer_loss', self.loss)
 
     opt = optimizer.optimizer_from_flags()
+    self.opt = opt
+
     grads_and_vars = opt.compute_gradients(loss)
 
     for g, v in grads_and_vars:
@@ -153,15 +140,9 @@ class FFNModel(object):
         tf.logging.error('Gradient is None: %s', v.op.name)
 
     if max_gradient_entry_mag > 0.0:
-      grads_and_vars = [
-          (
-              tf.clip_by_value(
-                  g, -max_gradient_entry_mag, +max_gradient_entry_mag
-              ),
-              v,
-          )
-          for g, v, in grads_and_vars
-      ]
+      grads_and_vars = [(tf.clip_by_value(g, -max_gradient_entry_mag,
+                                          +max_gradient_entry_mag), v)
+                        for g, v, in grads_and_vars]
 
     trainables = tf.trainable_variables()
     if trainables:
@@ -173,8 +154,7 @@ class FFNModel(object):
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       self.train_op = opt.apply_gradients(
-          grads_and_vars, global_step=self.global_step, name='train'
-      )
+          grads_and_vars, global_step=self.global_step, name='train')
 
   def show_center_slice(self, image, sigmoid=True):
     image = image[:, image.get_shape().dims[1] // 2, :, :, :]
@@ -187,23 +167,19 @@ class FFNModel(object):
 
   def update_seed(self, seed, update):
     """Updates the initial 'seed' with 'update'."""
-    dx = self.input_seed_size[0] - self.pred_mask_size[0]
-    dy = self.input_seed_size[1] - self.pred_mask_size[1]
-    dz = self.input_seed_size[2] - self.pred_mask_size[2]
+    dx = self.info.input_seed_size[0] - self.info.pred_mask_size[0]
+    dy = self.info.input_seed_size[1] - self.info.pred_mask_size[1]
+    dz = self.info.input_seed_size[2] - self.info.pred_mask_size[2]
 
     if dx == 0 and dy == 0 and dz == 0:
       seed += update
     else:
-      seed += tf.pad(
-          update,
-          [
-              [0, 0],
-              [dz // 2, dz - dz // 2],
-              [dy // 2, dy - dy // 2],
-              [dx // 2, dx - dx // 2],
-              [0, 0],
-          ],
-      )
+      seed += tf.pad(update,
+                     [[0, 0],  #
+                      [dz // 2, dz - dz // 2],  #
+                      [dy // 2, dy - dy // 2],  #
+                      [dx // 2, dx - dx // 2],  #
+                      [0, 0]])
     return seed
 
   def define_tf_graph(self):
@@ -213,5 +189,4 @@ class FFNModel(object):
     computing and optimizing the loss.
     """
     raise NotImplementedError(
-        'DefineTFGraph needs to be defined by a subclass.'
-    )
+        'DefineTFGraph needs to be defined by a subclass.')

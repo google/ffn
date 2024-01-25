@@ -38,6 +38,7 @@ from scipy.special import expit
 from scipy.special import logit
 import tensorflow.compat.v1 as tf
 from tensorflow.io import gfile
+from ..training import model as ffn_model
 from ..training.import_util import import_symbol
 from ..utils import bounding_box
 from ..utils import ortho_plane_visualization
@@ -48,7 +49,7 @@ MAX_SELF_CONSISTENT_ITERS = 32
 
 # Visualization.
 # ---------------------------------------------------------------------------
-class DynamicImage(object):
+class DynamicImage:
   def UpdateFromPIL(self, new_img):
     from io import BytesIO
     from IPython import display
@@ -172,11 +173,11 @@ def self_prediction_halt(
 
 
 # TODO(mjanusz): Add support for sparse inference.
-class Canvas(object):
+class Canvas:
   """Tracks state of the inference progress and results within a subvolume."""
 
   def __init__(self,
-               model,
+               model: ffn_model.FFNModel,
                tf_executor,
                image,
                options,
@@ -242,9 +243,9 @@ class Canvas(object):
 
     # Cast to array to ensure we can do elementwise expressions later.
     # All of these are in zyx order.
-    self._pred_size = np.array(model.pred_mask_size[::-1])
-    self._input_seed_size = np.array(model.input_seed_size[::-1])
-    self._input_image_size = np.array(model.input_image_size[::-1])
+    self._pred_size = np.array(model.info.pred_mask_size[::-1])
+    self._input_seed_size = np.array(model.info.input_seed_size[::-1])
+    self._input_image_size = np.array(model.info.input_image_size[::-1])
     self.margin = self._input_image_size // 2
 
     self._pred_delta = (self._input_seed_size - self._pred_size) // 2
@@ -277,7 +278,7 @@ class Canvas(object):
     if movement_policy_fn is None:
       # The model.deltas are (for now) in xyz order and must be swapped to zyx.
       self.movement_policy = movement.FaceMaxMovementPolicy(
-          self, deltas=model.deltas[::-1],
+          self, deltas=model.info.deltas[::-1],
           score_threshold=self.options.move_threshold)
     else:
       self.movement_policy = movement_policy_fn(self)
@@ -789,7 +790,7 @@ class Canvas(object):
     self.checkpoint_last = time.time()
 
 
-class Runner(object):
+class Runner:
   """Helper for managing FFN inference runs.
 
   Takes care of initializing the FFN model and any related functionality
@@ -798,6 +799,9 @@ class Runner(object):
   """
 
   ALL_MASKED = 1
+
+  request: inference_pb2.InferenceRequest
+  executor: executor.BatchExecutor
 
   def __init__(self):
     self.counters = inference_utils.Counters()
@@ -823,7 +827,8 @@ class Runner(object):
     """
     with timer_counter(self.counters, 'restore-tf-checkpoint'):
       logging.info('Loading checkpoint.')
-      self.model.saver.restore(self.session, checkpoint_path)
+      saver = tf.train.Saver()
+      saver.restore(self.session, checkpoint_path)
       logging.info('Checkpoint loaded.')
 
   def start(self, request, batch_size=1, exec_cls=None, session=None):
@@ -908,9 +913,8 @@ class Runner(object):
 
     self.executor = exec_cls(
         self.model, self.session, self.counters, batch_size)
-    self.movement_policy_fn = movement.get_policy_fn(request, self.model)
+    self.movement_policy_fn = movement.get_policy_fn(request, self.model.info)
 
-    self.saver = tf.train.Saver()
     self._load_model_checkpoint(request.model_checkpoint_path)
 
     self.executor.start_server()
@@ -975,7 +979,7 @@ class Runner(object):
               start=self.request.shift_mask_fov.start,
               size=self.request.shift_mask_fov.size)
         else:
-          shift_mask_diameter = np.array(self.model.input_image_size)
+          shift_mask_diameter = np.array(self.model.info.input_image_size)
           shift_mask_fov = bounding_box.BoundingBox(
               start=-(shift_mask_diameter // 2), size=shift_mask_diameter)
 
