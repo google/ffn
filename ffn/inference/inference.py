@@ -46,7 +46,8 @@ MAX_SELF_CONSISTENT_ITERS = 32
 
 class DynamicImage:
   def UpdateFromPIL(self, new_img):
-    from IPython import display   # pytype:disable=import-error pylint:disable=g-import-not-at-top
+    # pylint: disable=g-import-not-at-top
+    from IPython import display   # pytype:disable=import-error
     display.clear_output(wait=True)
     image = BytesIO()
     new_img.save(image, format='png')

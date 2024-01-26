@@ -63,9 +63,6 @@ class StatCounter:
     if self._parent is not None:
       self._parent.IncrementBy(x)
 
-  def Get(self):
-    return self.value
-
   def Set(self, x, export=True):
     """Sets the counter value to 'x'.
 
@@ -146,16 +143,31 @@ class Counters:
       self._counters = {}
     self._last_update = 0
 
-  def __getitem__(self, name):
+  def __getitem__(self, name: str) -> StatCounter:
+    return self.get(name)
+
+  def get(self, name: str, **kwargs) -> StatCounter:
+    """Retrieves the counter associated with the provided name.
+
+    If the counter does not exist, it will be created.
+
+    Args:
+      name: counter name
+      **kwargs: forwarded to _make_counter
+
+    Returns:
+      a counter corresponding to the specified name
+    """
     with self._lock:
       if name not in self._counters:
-        self._counters[name] = self._make_counter(name)
+        self._counters[name] = self._make_counter(name, **kwargs)
       return self._counters[name]
 
   def __iter__(self):
     return iter(self._counters.items())
 
-  def _make_counter(self, name):
+  def _make_counter(self, name: str, **kwargs) -> StatCounter:
+    del kwargs
     return StatCounter(self.update_status, name)
 
   def update_status(self):
@@ -164,17 +176,17 @@ class Counters:
   def get_sub_counters(self):
     return Counters(self)
 
-  def dump(self, filename):
+  def dump(self, filename: str):
     with storage.atomic_file(filename, 'w') as fd:
       for name, counter in sorted(self._counters.items()):
         fd.write('%s: %d\n' % (name, counter.value))
 
-  def dumps(self):
+  def dumps(self) -> str:
     state = {name: counter.value for name, counter in
              self._counters.items()}
     return json.dumps(state)
 
-  def loads(self, encoded_state):
+  def loads(self, encoded_state: str):
     state = json.loads(encoded_state)
     for name, value in state.items():
       # Do not set the exported counters. Otherwise after computing
