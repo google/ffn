@@ -85,51 +85,6 @@ class StatCounter:
 MSEC_IN_SEC = 1000
 
 
-@contextlib.contextmanager
-def timer_counter(counters, name, export=True):
-  """Creates a counter tracking time spent in the context.
-
-  Args:
-    counters: Counters object
-    name: counter name
-    export: whether to export counter via streamz
-
-  Yields:
-    tuple of two counters, to track number of calls and time spent on them,
-    respectively
-  """
-  assert isinstance(counters, Counters)
-  counter = counters.get(name + '-calls', export)
-  timer = counters.get(name + '-time-ms', export)
-  start_time = time.time()
-  try:
-    yield timer, counter
-  finally:
-    counter.Increment()
-    dt = (time.time() - start_time) * MSEC_IN_SEC
-    timer.IncrementBy(dt)
-
-
-class TimedIter:
-  """Wraps an iterator with a timing counter."""
-
-  def __init__(self, it, counters, counter_name):
-    self.it = it
-    self.counters = counters
-    self.counter_name = counter_name
-
-  def __iter__(self):
-    return self
-
-  def __next__(self):
-    with timer_counter(self.counters, self.counter_name):
-      ret = next(self.it)
-    return ret
-
-  def next(self):
-    return self.__next__()
-
-
 class Counters:
   """Container for counters."""
 
@@ -192,6 +147,51 @@ class Counters:
       # Do not set the exported counters. Otherwise after computing
       # the temporal differences in pcon large spikes will be shown.
       self[name].Set(value, export=False)
+
+
+@contextlib.contextmanager
+def timer_counter(counters: Counters, name: str, export=True):
+  """Creates a counter tracking time spent in the context.
+
+  Args:
+    counters: Counters object
+    name: counter name
+    export: whether to export counter via streamz
+
+  Yields:
+    tuple of two counters, to track number of calls and time spent on them,
+    respectively
+  """
+  assert isinstance(counters, Counters)
+  counter = counters.get(name + '-calls', export=export)
+  timer = counters.get(name + '-time-ms', export=export)
+  start_time = time.time()
+  try:
+    yield timer, counter
+  finally:
+    counter.Increment()
+    dt = (time.time() - start_time) * MSEC_IN_SEC
+    timer.IncrementBy(dt)
+
+
+class TimedIter:
+  """Wraps an iterator with a timing counter."""
+
+  def __init__(self, it, counters, counter_name):
+    self.it = it
+    self.counters = counters
+    self.counter_name = counter_name
+
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    with timer_counter(self.counters, self.counter_name):
+      ret = next(self.it)
+    return ret
+
+  def next(self):
+    return self.__next__()
 
 
 def match_histogram(image, lut, mask=None):
