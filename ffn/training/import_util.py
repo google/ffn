@@ -12,11 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Contains a utility function for dynamically importing symbols from modules.
-"""
+"""Functions for dynamically importing symbols from modules."""
 
 import importlib
-import logging
+from absl import logging
 
 
 def import_symbol(specifier, default_packages='ffn.training.models'):

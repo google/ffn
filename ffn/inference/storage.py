@@ -52,6 +52,25 @@ class SyncAdapter:
     return f'{self.__class__.__name__}({repr(self.tstore)})'
 
 
+class NumpyArray(np.ndarray):
+  """ndarray with a clear method.
+
+  Provides dense in-memory storage for FFN inference.
+  """
+
+  def __new__(cls, default_value=0, **kwargs):
+    ret = super(NumpyArray, cls).__new__(cls, **kwargs)
+    ret.default_value = default_value
+    return ret
+
+  def __init__(self, *args, **kwargs):
+    del args, kwargs
+    self.clear()
+
+  def clear(self):
+    self[...] = self.default_value
+
+
 def decorated_volume(settings, **kwargs) -> Volume:
   """Converts DecoratedVolume proto object into volume objects.
 

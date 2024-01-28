@@ -19,25 +19,31 @@ import logging
 import os
 import threading
 import time
-from . import inference_pb2
-from . import movement
-from . import seed
-from . import storage
 from connectomics.segmentation import labels as label_utils
-from .inference_utils import Counters
-from .inference_utils import TimedIter
-from .inference_utils import timer_counter
 import numpy as np
-
 from numpy.lib.stride_tricks import as_strided
-from ..utils import ortho_plane_visualization
 from scipy.special import expit
 from scipy.special import logit
 from tensorflow.io import gfile
 from ..training import model as ffn_model
+from ..utils import ortho_plane_visualization
+from . import executor
+from . import inference_pb2
+from . import movement
+from . import seed
+from . import storage
+from .inference_utils import Counters
+from .inference_utils import TimedIter
+from .inference_utils import timer_counter
+
 
 MSEC_IN_SEC = 1000
 MAX_SELF_CONSISTENT_ITERS = 32
+
+# pylint:disable=invalid-name
+Tuple3i = tuple[int, int, int]
+
+# pylint:enable=invalid-name
 
 
 # Visualization.
@@ -45,9 +51,11 @@ MAX_SELF_CONSISTENT_ITERS = 32
 
 
 class DynamicImage:
+
   def UpdateFromPIL(self, new_img):
     # pylint: disable=g-import-not-at-top
-    from IPython import display   # pytype:disable=import-error
+    from IPython import display  # pytype:disable=import-error
+
     display.clear_output(wait=True)
     image = BytesIO()
     new_img.save(image, format='png')
@@ -63,20 +71,21 @@ def _cmap_rgb1(drw):
   return (np.dstack([r, g, b]) * 250.0).astype(np.uint8)
 
 
-def visualize_state(seed_logits, pos, movement_policy, dynimage):
+def visualize_state(seed_logits, pos: Tuple3i, movement_policy, dynimage):
   """Visualizes the inference state.
 
   Args:
     seed_logits: ndarray (z, y, x) with the current predicted mask
     pos: current FoV position within 'seed' as z, y, x
     movement_policy: movement policy object
-    dynimage: DynamicImage object which is to be updated with the
-        state visualization
+    dynimage: DynamicImage object which is to be updated with the state
+      visualization
   """
   from PIL import Image
 
   planes = ortho_plane_visualization.cut_ortho_planes(
-      seed_logits, center=pos, cross_hair=True)
+      seed_logits, center=pos, cross_hair=True
+  )
   to_vis = ortho_plane_visualization.concat_ortho_planes(planes)
 
   if isinstance(movement_policy.scored_coords, np.ndarray):
@@ -93,11 +102,14 @@ def visualize_state(seed_logits, pos, movement_policy, dynimage):
     # The grid might be too large, cut it to be symmetrical
     cut = (np.array(scores_up.shape) - np.array(seed_logits.shape)) // 2
     sh = seed_logits.shape
-    scores_up = scores_up[cut[0]:cut[0] + sh[0],
-                          cut[1]:cut[1] + sh[1],
-                          cut[2]:cut[2] + sh[2]]
+    scores_up = scores_up[
+        cut[0] : cut[0] + sh[0],
+        cut[1] : cut[1] + sh[1],
+        cut[2] : cut[2] + sh[2],
+    ]
     grid_planes = ortho_plane_visualization.cut_ortho_planes(
-        scores_up, center=pos, cross_hair=True)
+        scores_up, center=pos, cross_hair=True
+    )
     grid_view = ortho_plane_visualization.concat_ortho_planes(grid_planes)
     grid_view *= 4  # Looks better this way
     to_vis = np.concatenate((to_vis, grid_view), axis=1)
@@ -106,8 +118,8 @@ def visualize_state(seed_logits, pos, movement_policy, dynimage):
   y, x = pos[1:]
 
   # Mark seed in the xy plane.
-  val[(y - 1):(y + 2), (x - 1):(x + 2), 0] = 255
-  val[(y - 1):(y + 2), (x - 1):(x + 2), 1:] = 0
+  val[(y - 1) : (y + 2), (x - 1) : (x + 2), 0] = 255
+  val[(y - 1) : (y + 2), (x - 1) : (x + 2), 1:] = 0
 
   vis = Image.fromarray(val)
   dynimage.UpdateFromPIL(vis)
@@ -117,51 +129,66 @@ def visualize_state(seed_logits, pos, movement_policy, dynimage):
 class Canvas:
   """Tracks state of the inference progress and results within a subvolume."""
 
-  def __init__(self,
-               model: ffn_model.FFNModel,
-               tf_executor,
-               image,
-               options,
-               counters=None,
-               restrictor=None,
-               movement_policy_fn=None,
-               keep_history=False,
-               checkpoint_path=None,
-               checkpoint_interval_sec=0,
-               corner_zyx=None):
+  # Saving compressed NPZ files involves temporary files in the local
+  # filesystem. In order to avoid running out of disk/RAM, we serialize
+  # these operations.
+  io_lock = threading.Lock()
+
+  def __init__(
+      self,
+      model_info: ffn_model.ModelInfo,
+      exec_client: executor.ExecutorClient,
+      image,
+      options,
+      counters=None,
+      restrictor=None,
+      movement_policy_fn=None,
+      keep_history=False,
+      checkpoint_path=None,
+      checkpoint_interval_sec=0,
+      corner_zyx=None,
+      storage_cls=storage.NumpyArray,
+      keep_probability_maps=False,
+  ):
     """Initializes the canvas.
 
     Args:
-      model: FFNModel object
-      tf_executor: Executor object to use for inference
+      model_info: ModelInfo for the FFN model
+      exec_client: client for the executor interface
       image: 3d ndarray-like of shape (z, y, x)
       options: InferenceOptions proto
       counters: (optional) counter container, where __getitem__ returns a
-          counter compatible with the MR Counter API
-      restrictor: (optional) a MovementRestrictor object which can exclude
-          some areas of the data from the segmentation process
-      movement_policy_fn: callable taking the Canvas object as its
-          only argument and returning a movement policy object
-          (see movement.BaseMovementPolicy)
+        counter compatible with the MR Counter API
+      restrictor: (optional) a MovementRestrictor object which can exclude some
+        areas of the data from the segmentation process
+      movement_policy_fn: callable taking the Canvas object as its only argument
+        and returning a movement policy object (see movement.BaseMovementPolicy)
       keep_history: whether to maintain a record of locations visited by the
-          FFN, together with any associated metadata; note that this data is
-          kept only for the object currently being segmented
+        FFN, together with any associated metadata; note that this data is kept
+        only for the object currently being segmented
       checkpoint_path: (optional) path at which to save a checkpoint file
-      checkpoint_interval_sec: how often to save a checkpoint file (in
-          seconds); if <= 0, no checkpoint are going to be saved
+      checkpoint_interval_sec: how often to save a checkpoint file (in seconds);
+        if <= 0, no checkpoint are going to be saved
       corner_zyx: 3 element array-like indicating the spatial corner of the
-          image in (z, y, x)
+        image in (z, y, x)
+      storage_cls: class implementing the ndarray interface and a 'clear'
+        method. Used to create arrays for internal data.
+      keep_probability_maps: controls whether object probability maps are
+        tracked and saved.
     """
-    self.model = model
     self.image = image
-    self.executor = tf_executor
+    self._exec_client = exec_client
     self._exec_client_id = None
 
     self.options = inference_pb2.InferenceOptions()
     self.options.CopyFrom(options)
     # Convert thresholds, etc. to logit values for efficient inference.
-    for attr in ('init_activation', 'pad_value', 'move_threshold',
-                 'segment_threshold'):
+    for attr in (
+        'init_activation',
+        'pad_value',
+        'move_threshold',
+        'segment_threshold',
+    ):
       setattr(self.options, attr, logit(getattr(self.options, attr)))
 
     self.counters = counters if counters is not None else Counters()
@@ -180,9 +207,9 @@ class Canvas:
 
     # Cast to array to ensure we can do elementwise expressions later.
     # All of these are in zyx order.
-    self._pred_size = np.array(model.info.pred_mask_size[::-1])
-    self._input_seed_size = np.array(model.info.input_seed_size[::-1])
-    self._input_image_size = np.array(model.info.input_image_size[::-1])
+    self._pred_size = np.array(model_info.pred_mask_size[::-1])
+    self._input_seed_size = np.array(model_info.input_seed_size[::-1])
+    self._input_image_size = np.array(model_info.input_image_size[::-1])
     self.margin = self._input_image_size // 2
 
     self._pred_delta = (self._input_seed_size - self._pred_size) // 2
@@ -191,13 +218,20 @@ class Canvas:
     # Current working area. This represents an object probability map
     # in logit form, and is fed directly as the mask input to the FFN
     # model.
-    self.seed = np.zeros(self.shape, dtype=np.float32)
-    self.segmentation = np.zeros(self.shape, dtype=np.int32)
-    self.seg_prob = np.zeros(self.shape, dtype=np.uint8)
+    self.seed = storage_cls(
+        shape=self.shape, dtype=np.float32, default_value=np.nan
+    )
+    self.segmentation = storage_cls(shape=self.shape, dtype=np.int32)
+    self.keep_probability_maps = keep_probability_maps
+    if keep_probability_maps:
+      self.seg_prob = storage_cls(shape=self.shape, dtype=np.uint8)
+    else:
+      self.seg_prob = None
 
     # When an initial segmentation is provided, maps the global ID space
     # to locally used IDs.
     self.global_to_local_ids = {}
+    self.local_to_global_ids = {}
 
     self.seed_policy = None
     self._seed_policy_state = None
@@ -215,23 +249,31 @@ class Canvas:
     if movement_policy_fn is None:
       # The model.deltas are (for now) in xyz order and must be swapped to zyx.
       self.movement_policy = movement.FaceMaxMovementPolicy(
-          self, deltas=model.info.deltas[::-1],
-          score_threshold=self.options.move_threshold)
+          self,
+          deltas=model_info.deltas[::-1],
+          score_threshold=self.options.move_threshold,
+      )
     else:
       self.movement_policy = movement_policy_fn(self)
 
+    self._hosts = []
     self.reset_state((0, 0, 0))
     self.t_last_predict = None
+    self.log_info(
+        'Constructed canvas with corner %s (zyx) and shape %s',
+        self.corner_zyx,
+        self.shape,
+    )
 
   def _register_client(self):
     if self._exec_client_id is None:
-      self._exec_client_id = self.executor.start_client()
+      self._exec_client_id = self._exec_client.start()
       logging.info('Registered as client %d.', self._exec_client_id)
 
   def _deregister_client(self):
     if self._exec_client_id is not None:
       logging.info('Deregistering client %d', self._exec_client_id)
-      self.executor.finish_client(self._exec_client_id)
+      self._exec_client.finish()
       self._exec_client_id = None
 
   def __del__(self):
@@ -240,10 +282,16 @@ class Canvas:
     # where such cycles are really needed.
     self._deregister_client()
 
-  def local_id(self, segment_id):
+  def local_id(self, segment_id: int):
     return self.global_to_local_ids.get(segment_id, segment_id)
 
-  def reset_state(self, start_pos):
+  def reset_state(self, start_pos: Tuple3i, reset_extents=True):
+    """Resets the state of the Canvas to prepares it for a new inference run."""
+
+    # NOTE: Keep in mind that any settings reset in this function should
+    # likely be part of the checkpoint, so that they can be restored
+    # correctly when an in-flight segment is being resumed.
+
     # Resetting the movement_policy is currently necessary to update the
     # policy's bitmask for whether a position is already segmented (the
     # canvas updates the segmented mask only between calls to segment_at
@@ -252,17 +300,19 @@ class Canvas:
     self.history = []
     self.history_deleted = []
 
-    self._min_pos = np.array(start_pos)
-    self._max_pos = np.array(start_pos)
+    if reset_extents:
+      self._min_pos = np.array(start_pos)
+      self._max_pos = np.array(start_pos)
+
     self._register_client()
 
-  def is_valid_pos(self, pos, ignore_move_threshold=False):
+  def is_valid_pos(self, pos: Tuple3i, ignore_move_threshold=False) -> bool:
     """Returns True if segmentation should be attempted at the given position.
 
     Args:
       pos: position to check as (z, y, x)
       ignore_move_threshold: (boolean) when starting a new segment at pos the
-          move threshold can and must be ignored.
+        move threshold can and must be ignored.
 
     Returns:
       Boolean indicating whether to run FFN inference at the given position.
@@ -292,7 +342,7 @@ class Canvas:
 
     return True
 
-  def _get_image(self, pos):
+  def _get_image(self, pos: Tuple3i) -> np.ndarray:
     """Returns the image for the FOV centered at 'pos'."""
     # Top-left corner of the FoV.
     start = np.array(pos) - self.margin
@@ -300,7 +350,7 @@ class Canvas:
     img = self.image[tuple(slice(s, e) for s, e in zip(start, end))]
     return img
 
-  def predict(self, pos, logit_seed):
+  def predict(self, pos: Tuple3i, logit_seed: np.ndarray) -> np.ndarray:
     """Runs a single step of FFN prediction.
 
     Args:
@@ -318,19 +368,19 @@ class Canvas:
       if self.t_last_predict is not None:
         delta_t = time.time() - self.t_last_predict
         self.counters['inference-not-predict-ms'].IncrementBy(
-            delta_t * MSEC_IN_SEC)
+            delta_t * MSEC_IN_SEC
+        )
+      extra_fetches = ['logits']
 
-      fetches = {'logits': self.model.logits}
       with timer_counter(self.counters, 'inference'):
-        fetches = self.executor.predict(self._exec_client_id,
-                                        logit_seed, img, fetches)
+        fetches = self._exec_client.predict(logit_seed, img, extra_fetches)
 
       self.t_last_predict = time.time()
 
     logits = fetches.pop('logits')
     return logits[..., 0]
 
-  def update_at(self, pos):
+  def update_at(self, pos: Tuple3i) -> np.ndarray:
     """Updates object mask prediction at a specific position.
 
     Note that depending on the settings of the canvas, the update might involve
@@ -366,15 +416,18 @@ class Canvas:
 
         if self._keep_history:
           self.history_deleted.append(
-              np.sum((old_seed >= logit(0.8)) & (logits < th_max)))
+              np.sum((old_seed >= logit(0.8)) & (logits < th_max))
+          )
 
-        if (np.mean(logits >= self.options.move_threshold) >
-            self.options.disco_seed_threshold):
+        if (
+            np.mean(logits >= self.options.move_threshold)
+            > self.options.disco_seed_threshold
+        ):
           # Because (x > NaN) is always False, this mask excludes positions that
           # were previously uninitialized (i.e. set to NaN in old_seed).
           old_err = np.seterr(invalid='ignore')
           try:
-            mask = ((old_seed < th_max) & (logits > old_seed))
+            mask = (old_seed < th_max) & (logits > old_seed)
           finally:
             np.seterr(**old_err)
           logits[mask] = old_seed[mask]
@@ -384,46 +437,62 @@ class Canvas:
 
     return logits
 
-  def init_seed(self, pos):
+  def init_seed(self, pos: Tuple3i):
     """Reinitiailizes the object mask with a seed.
 
     Args:
       pos: position at which to place the seed (z, y, x)
     """
-    self.seed[...] = np.nan
+    self.seed.clear()
     self.seed[pos] = self.options.init_activation
 
-  def segment_at(self, start_pos, dynamic_image=None,
-                 vis_update_every=10,
-                 vis_fixed_z=False):
+  def get_next_segment_id(self) -> int:
+    """Returns the next free segment ID to assign."""
+
+    self._max_id += 1
+    while self._max_id in self.origins:
+      self._max_id += 1
+    return self._max_id
+
+  def segment_at(
+      self,
+      start_pos: Tuple3i,
+      dynamic_image=None,
+      vis_update_every=10,
+      vis_fixed_z=False,
+      partial_segment_iters=0,
+  ):
     """Runs FFN segmentation starting from a specific point.
 
     Args:
       start_pos: location at which to run segmentation as (z, y, x)
-      dynamic_image: optional DynamicImage object which to update with
-          a visualization of the segmentation state
-      vis_update_every: number of FFN iterations between subsequent
-          updates of the dynamic image
-      vis_fixed_z: if True, the z position used for visualization is
-          fixed at the starting value specified in `pos`. Otherwise,
-          the current FoV of the FFN is used to determine what to
-          visualize.
+      dynamic_image: optional DynamicImage object which to update with a
+        visualization of the segmentation state
+      vis_update_every: number of FFN iterations between subsequent updates of
+        the dynamic image
+      vis_fixed_z: if True, the z position used for visualization is fixed at
+        the starting value specified in `pos`. Otherwise, the current FoV of the
+        FFN is used to determine what to visualize.
+      partial_segment_iters: if an interrupted segmentation is being resumed,
+        the number of inference calls already performed; 0 otherwise.
 
     Returns:
       number of iterations performed
     """
-    if self.reset_seed_per_segment:
-      self.init_seed(start_pos)
-    # This includes a reset of the movement policy, see comment in method body.
-    self.reset_state(start_pos)
+    if not partial_segment_iters:
+      if self.reset_seed_per_segment:
+        self.init_seed(start_pos)
+      # This includes a reset of the movement policy, see comment in method
+      # body.
+      self.reset_state(start_pos, reset_extents=self.reset_seed_per_segment)
 
-    num_iters = 0
+      if not self.movement_policy:
+        # Add first element with arbitrary priority 1 (it will be consumed
+        # right away anyway).
+        item = (self.movement_policy.score_threshold * 2, start_pos)
+        self.movement_policy.append(item)
 
-    if not self.movement_policy:
-      # Add first element with arbitrary priority 1 (it will be consumed
-      # right away anyway).
-      item = (self.movement_policy.score_threshold * 2, start_pos)
-      self.movement_policy.append(item)
+    num_iters = partial_segment_iters
 
     with timer_counter(self.counters, 'segment_at-loop'):
       for pos in self.movement_policy:
@@ -449,22 +518,21 @@ class Canvas:
             self.history.append(pos)
 
           if dynamic_image is not None and num_iters % vis_update_every == 0:
-            vis_pos = pos if not vis_fixed_z else (start_pos[0], pos[1],
-                                                   pos[2])
-            visualize_state(self.seed, vis_pos, self.movement_policy,
-                            dynamic_image)
+            vis_pos = pos if not vis_fixed_z else (start_pos[0], pos[1], pos[2])
+            visualize_state(
+                self.seed, vis_pos, self.movement_policy, dynamic_image
+            )
 
           assert np.all(pred.shape == self._pred_size)
 
-          self._maybe_save_checkpoint()
+          self._maybe_save_checkpoint(partial_segment_iters=num_iters)
 
     return num_iters
 
-  def log_info(self, string, *args, **kwargs):
-    logging.info('[cl %d] ' + string, self._exec_client_id,
-                 *args, **kwargs)
+  def log_info(self, string: str, *args, **kwargs):
+    logging.info('[cl %d] ' + string, self._exec_client_id, *args, **kwargs)
 
-  def segment_all(self, seed_policy=seed.PolicyPeaks):
+  def segment_all(self, seed_policy=seed.PolicyPeaks, partial_segment_iters=0):
     """Segments the input image.
 
     Segmentation is attempted from all valid starting points provided by
@@ -472,7 +540,9 @@ class Canvas:
 
     Args:
       seed_policy: callable taking the image and the canvas object as arguments
-          and returning an iterator over proposed seed point.
+        and returning an iterator over proposed seed point.
+      partial_segment_iters: number of iterations already done for an in-progres
+        segment in case one is being resumed
     """
     self.seed_policy = seed_policy(self)
     if self._seed_policy_state is not None:
@@ -486,12 +556,16 @@ class Canvas:
       for pos in TimedIter(self.seed_policy, self.counters, 'seed-policy'):
         # When starting a new segment the move_threshold on the probability
         # should be ignored when determining if the position is valid.
-        if not (self.is_valid_pos(pos, ignore_move_threshold=True)
-                and self.restrictor.is_valid_pos(pos)
-                and self.restrictor.is_valid_seed(pos)):
+        if not (
+            self.is_valid_pos(pos, ignore_move_threshold=True)
+            and self.restrictor.is_valid_pos(pos)
+            and self.restrictor.is_valid_seed(pos)
+        ):
+          assert not partial_segment_iters
           continue
 
-        self._maybe_save_checkpoint()
+        if not partial_segment_iters:
+          self._maybe_save_checkpoint(partial_segment_iters=0)
 
         # Too close to an existing segment?
         low = np.array(pos) - mbd
@@ -500,19 +574,24 @@ class Canvas:
         if np.any(self.segmentation[sel] > 0):
           logging.debug('Too close to existing segment.')
           self.segmentation[pos] = -1
+          assert not partial_segment_iters
           continue
 
         self.log_info('Starting segmentation at %r (zyx)', pos)
 
         # Try segmentation.
         seg_start = time.time()
-        num_iters = self.segment_at(pos)
+        num_iters = self.segment_at(
+            pos, partial_segment_iters=partial_segment_iters
+        )
+        partial_segment_iters = 0
         t_seg = time.time() - seg_start
 
         # Check if segmentation was successful.
         if num_iters <= 0:
-          self.counters['invalid-other-time-ms'].IncrementBy(t_seg *
-                                                             MSEC_IN_SEC)
+          self.counters['invalid-other-time-ms'].IncrementBy(
+              t_seg * MSEC_IN_SEC
+          )
           self.log_info('Failed: num iters was %d', num_iters)
           continue
 
@@ -543,8 +622,9 @@ class Canvas:
         raw_segmented_voxels = np.sum(mask)
 
         # Record existing segment IDs overlapped by the newly added object.
-        overlapped_ids, counts = np.unique(self.segmentation[sel][mask],
-                                           return_counts=True)
+        overlapped_ids, counts = np.unique(
+            self.segmentation[sel][mask], return_counts=True
+        )
         valid = overlapped_ids > 0
         overlapped_ids = overlapped_ids[valid]
         counts = counts[valid]
@@ -557,32 +637,38 @@ class Canvas:
           if self.segmentation[pos] == 0:
             self.segmentation[pos] = -1
           self.log_info('Failed: too small: %d', actual_segmented_voxels)
-          self.counters['invalid-small-time-ms'].IncrementBy(t_seg *
-                                                             MSEC_IN_SEC)
+          self.counters['invalid-small-time-ms'].IncrementBy(
+              t_seg * MSEC_IN_SEC
+          )
           continue
 
         self.counters['voxels-segmented'].IncrementBy(actual_segmented_voxels)
         self.counters['voxels-overlapping'].IncrementBy(
-            raw_segmented_voxels - actual_segmented_voxels)
+            raw_segmented_voxels - actual_segmented_voxels
+        )
 
-        # Find the next free ID to assign.
-        self._max_id += 1
-        while self._max_id in self.origins:
-          self._max_id += 1
+        sid = self.get_next_segment_id()
+        self.segmentation[sel][mask] = sid
+        if self.keep_probability_maps:
+          self.seg_prob[sel][mask] = storage.quantize_probability(
+              expit(self.seed[sel][mask])
+          )
 
-        self.segmentation[sel][mask] = self._max_id
-        self.seg_prob[sel][mask] = storage.quantize_probability(
-            expit(self.seed[sel][mask]))
-
-        self.log_info('Created supervoxel:%d  seed(zyx):%s  size:%d  iters:%d',
-                      self._max_id, pos,
-                      actual_segmented_voxels, num_iters)
+        self.log_info(
+            'Created supervoxel:%d  seed(zyx):%s  size:%d  iters:%d',
+            self._max_id,
+            pos,
+            actual_segmented_voxels,
+            num_iters,
+        )
 
         self.overlaps[self._max_id] = np.array([overlapped_ids, counts])
 
         # Record information about how a given supervoxel was created.
         self.origins[self._max_id] = storage.OriginInfo(pos, num_iters, t_seg)
         self.counters['valid-time-ms'].IncrementBy(t_seg * MSEC_IN_SEC)
+
+        self._maybe_save_checkpoint(partial_segment_iters=0)
 
     self.log_info('Segmentation done.')
 
@@ -593,8 +679,9 @@ class Canvas:
     # inference.
     self._deregister_client()
 
-  def init_segmentation_from_volume(self, volume, corner, end,
-                                    align_and_crop=None):
+  def init_segmentation_from_volume(
+      self, volume, corner, end, align_and_crop=None
+  ):
     """Initializes segmentation from an existing VolumeStore.
 
     This is useful to start inference with an existing segmentation.
@@ -606,40 +693,55 @@ class Canvas:
       end: location at which to stop reading data as (z, y, x)
       align_and_crop: callable to align & crop a 3d segmentation subvolume
     """
-    self.log_info('Loading initial segmentation from (zyx) %r:%r',
-                  corner, end)
-
-    init_seg = volume[:,  #
-                      corner[0]:end[0],  #
-                      corner[1]:end[1],  #
-                      corner[2]:end[2]]
+    init_seg = volume[
+        :, corner[0] : end[0], corner[1] : end[1], corner[2] : end[2]  #  #  #
+    ]
+    init_seg = init_seg[0, ...]
+    self.log_info(
+        'Segmentation loaded, shape: %r. Canvas segmentation is %r',
+        init_seg.shape,
+        self.segmentation.shape,
+    )
 
     init_seg, global_to_local = label_utils.make_contiguous(init_seg)
-    init_seg = init_seg[0, ...]
-
     self.global_to_local_ids = dict(global_to_local)
+    self.local_to_global_ids = {
+        v: k for k, v in self.global_to_local_ids.items()
+    }
 
-    self.log_info('Segmentation loaded, shape: %r. Canvas segmentation is %r',
-                  init_seg.shape, self.segmentation.shape)
     if align_and_crop is not None:
       init_seg = align_and_crop(init_seg)
       self.log_info('Segmentation cropped to: %r', init_seg.shape)
 
     self.segmentation[:] = init_seg
-    self.seg_prob[self.segmentation > 0] = storage.quantize_probability(
-        np.array([1.0]))
-    self._max_id = np.max(self.segmentation)
+    if self.keep_probability_maps:
+      assert self.seg_prob is not None
+      self.seg_prob[self.segmentation > 0] = storage.quantize_probability(
+          np.array([1.0])
+      )
+    self._max_id = int(np.max(self.segmentation))
     self.log_info('Max restored ID is: %d.', self._max_id)
 
-  def restore_checkpoint(self, path):
-    """Restores state from the checkpoint at `path`."""
+  def restore_checkpoint(self, path: str) -> int:
+    """Restores state from the checkpoint at `path`.
+
+    Args:
+      path: path to the file from which to load the checkpoint
+
+    Returns:
+      an int indicating the number of inference iterations already done for
+      an in-progress segment, or 0 if the checkpoint does not contain an
+      in-progress segment
+    """
     self.log_info('Restoring inference checkpoint: %s', path)
     with gfile.GFile(path, 'rb') as f:
-      data = np.load(f)
+      data = np.load(f, allow_pickle=True)
 
       self.segmentation[:] = data['segmentation']
       self.seed[:] = data['seed']
-      self.seg_prob[:] = data['seg_qprob']
+      if self.keep_probability_maps:
+        assert self.seg_prob is not None
+        self.seg_prob[:] = data['seg_qprob']
       self.history_deleted = list(data['history_deleted'])
       self.history = list(data['history'])
       self.origins = data['origins'].item()
@@ -648,48 +750,82 @@ class Canvas:
 
       segmented_voxels = np.sum(self.segmentation != 0)
       self.counters['voxels-segmented'].Set(segmented_voxels)
-      self._max_id = np.max(self.segmentation)
+      self._max_id = int(np.max(self.segmentation))
+      self._min_pos = data['min_pos']
+      self._max_pos = data['max_pos']
 
       self.movement_policy.restore_state(data['movement_policy'])
 
-      seed_policy_state = data['seed_policy_state']
       # When restoring the state of a previously unused Canvas, the seed
       # policy will not be defined. We just save the seed policy state here
       # for future use in .segment_all().
-      self._seed_policy_state = seed_policy_state
+      self._seed_policy_state = data['seed_policy_state']
 
       self.counters.loads(data['counters'].item())
 
-    self.log_info('Inference checkpoint restored.')
+      if 'partial_segment_iters' in data:
+        partial_segment_iters = data['partial_segment_iters']
+      else:
+        partial_segment_iters = 0
 
-  def save_checkpoint(self, path):
-    """Saves a inference checkpoint to `path`."""
+      if 'hosts' in data:
+        self._hosts = list(data['hosts'])
+
+    self.log_info('Inference checkpoint restored.')
+    return partial_segment_iters
+
+  def save_checkpoint(self, path: str, partial_segment_iters: int):
+    """Saves an inference checkpoint to `path`.
+
+    Args:
+      path: path at which the checkpoint should be saved
+      partial_segment_iters: if this checkpoint is for an in-flight segment,
+        number of inference iterations already executed; 0 otherwise
+    """
     self.log_info('Saving inference checkpoint to %s.', path)
     with timer_counter(self.counters, 'save_checkpoint'):
       gfile.makedirs(os.path.dirname(path))
       with storage.atomic_file(path) as fd:
         seed_policy_state = None
         if self.seed_policy is not None:
-          seed_policy_state = self.seed_policy.get_state()
+          seed_policy_state = self.seed_policy.get_state(
+              partial_segment_iters > 0
+          )
 
-        np.savez_compressed(fd,
-                            movement_policy=self.movement_policy.get_state(),
-                            segmentation=self.segmentation,
-                            seg_qprob=self.seg_prob,
-                            seed=self.seed,
-                            origins=self.origins,
-                            overlaps=self.overlaps,
-                            history=np.array(self.history),
-                            history_deleted=np.array(self.history_deleted),
-                            seed_policy_state=seed_policy_state,
-                            counters=self.counters.dumps())
+        aux = {}
+        if self.keep_probability_maps:
+          aux['seg_qprob'] = self.seg_prob
+
+        np.savez_compressed(
+            fd,
+            movement_policy=np.asarray(
+                self.movement_policy.get_state(), dtype=object
+            ),
+            segmentation=self.segmentation,
+            seed=self.seed,
+            origins=self.origins,
+            overlaps=self.overlaps,
+            min_pos=self._min_pos,
+            max_pos=self._max_pos,
+            history=np.array(self.history),
+            history_deleted=np.array(self.history_deleted),
+            seed_policy_state=np.asarray(seed_policy_state, dtype=object),
+            counters=self.counters.dumps(),
+            partial_segment_iters=partial_segment_iters,
+            hosts=self._hosts,
+            **aux,
+        )
     self.log_info('Inference checkpoint saved.')
 
-  def _maybe_save_checkpoint(self):
+  def _maybe_save_checkpoint(self, partial_segment_iters=0):
     """Attempts to save a checkpoint.
 
     A checkpoint is only saved if the canvas is configured to keep checkpoints
     and if sufficient time has passed since the last one was saved.
+
+    Args:
+      partial_segment_iters: if this checkpoint is for an in-flight segment,
+        number of inference iterations already executed; 0 otherwise
     """
     if self.checkpoint_path is None or self.checkpoint_interval_sec <= 0:
       return
@@ -697,5 +833,8 @@ class Canvas:
     if time.time() - self.checkpoint_last < self.checkpoint_interval_sec:
       return
 
-    self.save_checkpoint(self.checkpoint_path)
+    with Canvas.io_lock:
+      self.save_checkpoint(
+          self.checkpoint_path, partial_segment_iters=partial_segment_iters
+      )
     self.checkpoint_last = time.time()
