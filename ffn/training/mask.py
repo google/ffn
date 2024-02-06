@@ -1,4 +1,4 @@
-# Copyright 2017 Google Inc.
+# Copyright 2024 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """Utilites for dealing with 2d and 3d object masks."""
+
+from typing import Optional, Sequence
 
 import numpy as np
 import tensorflow.compat.v1 as tf
@@ -26,7 +29,7 @@ def crop(tensor, offset, crop_shape):
   Args:
     tensor: tensor to extract data from (b, [z], y, x, c)
     offset: (x, y, [z]) offset from the center point of 'tensor'; center is
-        taken to be 'shape // 2'
+      taken to be 'shape // 2'
     crop_shape: (x, y, [z]) shape to extract
 
   Returns:
@@ -42,18 +45,20 @@ def crop(tensor, offset, crop_shape):
     off_y = shape[-3] // 2 - crop_shape[1] // 2 + offset[1]
     off_x = shape[-2] // 2 - crop_shape[0] // 2 + offset[0]
 
+    # Note: native indexing syntax not used below due to TPU compatibility.
     if len(offset) == 2:
-      cropped = tensor[:,
-                       off_y:(off_y + crop_shape[1]),
-                       off_x:(off_x + crop_shape[0]),
-                       :]
+      cropped = tf.slice(
+          tensor,
+          begin=(0, off_y, off_x, 0),
+          size=(shape[0], crop_shape[1], crop_shape[0], shape[-1]))
     else:
       off_z = shape[-4] // 2 - crop_shape[2] // 2 + offset[2]
-      cropped = tensor[:,
-                       off_z:(off_z + crop_shape[2]),
-                       off_y:(off_y + crop_shape[1]),
-                       off_x:(off_x + crop_shape[0]),
-                       :]
+      cropped = tf.slice(
+          tensor,
+          begin=(0, off_z, off_y, off_x, 0),
+          size=(shape[0], crop_shape[2], crop_shape[1], crop_shape[0],
+                shape[-1]))
+
     return cropped
 
 
@@ -66,12 +71,11 @@ def update_at(to_update, offset, new_value, valid=None):
 
   Args:
     to_update: numpy array to update (b, [z], y, x, c)
-    offset: (x, y, [z]) offset from the center point of 'to_update',
-        at which to locate the center of 'new_value'. Center is taken to
-        be 'shape // 2'.
+    offset: (x, y, [z]) offset from the center point of 'to_update', at which to
+      locate the center of 'new_value'. Center is taken to be 'shape // 2'.
     new_value: numpy array with values to paste (b, [z], y, x, c)
     valid: (optional) mask selecting values to be updated; typically a 1d bool
-        mask over the batch dimension
+      mask over the batch dimension
 
   Returns:
     None. 'to_update' is modified in place.
@@ -95,37 +99,46 @@ def update_at(to_update, offset, new_value, valid=None):
     to_update[selector] = new_value
 
 
-def crop_and_pad(data, offset, crop_shape, target_shape=None):
+def crop_and_pad(data: np.ndarray,
+                 offset: Sequence[int],
+                 crop_shape: Sequence[int],
+                 target_shape: Optional[Sequence[int]] = None) -> np.ndarray:
   """Extracts 'crop_shape' around 'offset' from 'data'.
 
-  Optionally pads with zeros to 'target_shape'.
+  Optionally pads with zeros to 'target_shape'. The dimension of `offset`
+  defines the expected number of spatial dimensions D in the input.
 
   Args:
-    data: 4d/5d array (b, [z], y, x, c)
-    offset: (x, y, [z]) offset from the center of 'data'. Center is taken to
-        be 'shape // 2'
+    data: D+2 or higher-dim array, shape (b, [z], y, x, c) where b can be 1 or
+      more batch dimensions
+    offset: (x, y, [z]) offset from the center of 'data'. Center is taken to be
+      'shape // 2'
     crop_shape: ([cz], cy, cx) shape to extract
-    target_shape: optional ([tz], ty, tx) shape to return; if specified,
-        the cropped data is padded with zeros symmetrically on all sides
-        in order to expand it to the target shape. If padding is odd,
-        the padding on the left is 1 shorter than the one on the right.
+    target_shape: optional ([tz], ty, tx) shape to return; if specified, the
+      cropped data is padded with zeros symmetrically on all sides in order to
+      expand it to the target shape. If padding is odd, the padding on the left
+      is 1 shorter than the one on the right.
 
   Returns:
     Extracted array as (b, tz, ty, tx, c) if target_shape is specified
         or (b, cz, cy, cx, c) if only crop_shape is given.
   """
+  dim = len(offset)
+
   # Spatial dimensions only. All vars in zyx.
-  shape = np.array(data.shape[1:-1])
+  shape = np.array(data.shape[-(1 + dim):-1])
   crop_shape = np.array(crop_shape)
   offset = np.array(offset[::-1])
 
   start = shape // 2 - crop_shape // 2 + offset
   end = start + crop_shape
 
+  num_batch = len(data.shape) - dim - 1
+
   assert np.all(start >= 0)
 
   selector = [slice(s, e) for s, e in zip(start, end)]
-  selector = tuple([slice(None)] + selector + [slice(None)])
+  selector = tuple([slice(None)] * num_batch + selector + [slice(None)])
   cropped = data[selector]
 
   if target_shape is not None:
@@ -134,7 +147,7 @@ def crop_and_pad(data, offset, crop_shape, target_shape=None):
     pre = delta // 2
     post = delta - delta // 2
 
-    paddings = [(0, 0)]  # no padding for batch
+    paddings = [(0, 0)] * num_batch  # no padding for batch
     paddings.extend(zip(pre, post))
     paddings.append((0, 0))  # no padding for channels
 
@@ -161,4 +174,3 @@ def make_seed(shape, batch_size, pad=0.05, seed=0.95):
   idx = tuple([slice(None)] + list(np.array(shape) // 2))
   seed_array[idx] = seed
   return seed_array
-
