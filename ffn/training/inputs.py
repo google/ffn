@@ -199,35 +199,6 @@ def parse_tf_coords(x):
   )
 
 
-def load_coordinates_from_tfex(
-    coord_pattern: str,
-    shuffle: bool = True,
-    shuffle_size: Optional[int] = 4096,
-    shuffle_seed: Optional[int] = None,
-    parse_fn: Callable[[Any], dict[str, Any]] = parse_tf_coords,
-    reshuffle_each_iteration: bool = True,
-) -> tf.data.Dataset:
-  """Loads coordinates from a RecordIO of tf.Example protos."""
-  coord_paths = sorted(gfile.Glob(coord_pattern))
-  if shuffle:
-    if shuffle_seed:
-      random.Random(shuffle_seed).shuffle(coord_paths)
-    else:
-      random.shuffle(coord_paths)
-  logging.info('Loading data from: %r', coord_paths)
-  ds = tf.data.RecordIODataset(tf.constant(coord_paths, dtype=tf.string))
-
-  ds = ds.map(parse_fn, deterministic=True)
-  if shuffle:
-    ds = ds.shuffle(
-        shuffle_size,
-        seed=shuffle_seed,
-        reshuffle_each_iteration=reshuffle_each_iteration,
-    )
-
-  return ds.repeat()
-
-
 def load_patch_coordinates(coordinates_file_pattern,
                            shuffle=True,
                            scope='load_patch_coordinates',
