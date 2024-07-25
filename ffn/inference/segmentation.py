@@ -205,7 +205,7 @@ def split_segmentation_by_intersection(a: np.ndarray, b: np.ndarray,
       orig_values_map, x = np.unique(x, return_inverse=True)
       if len(orig_values_map) > max_uint32:
         raise ValueError('More than 2**32-1 unique labels not supported')
-      x = np.cast[np.uint64](x)
+      x = np.asarray(x, dtype=np.uint64)
       if orig_values_map[0] != 0:
         orig_values_map = np.concatenate(
             [np.array([0], dtype=np.uint64), orig_values_map])
