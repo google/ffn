@@ -45,7 +45,7 @@ setup(
         'scikit-image',
         'scipy',
         'numpy',
-        'tensorflow<2',
+        'tensorflow<3',
         'tensorstore',
         'h5py',
         'Pillow',
