@@ -255,7 +255,7 @@ class ObjectReview(Base):
       num_to_prefetch: int = 10,
       locations: Sequence[Point] | None = None,
       points: Sequence[PointList] | None = None,
-      **kwargs
+      **kwargs,
   ):
     """Constructor.
 
@@ -276,7 +276,7 @@ class ObjectReview(Base):
         locations=locations,
         objects=objects,
         points=points,
-        **kwargs
+        **kwargs,
     )
     self.bad = bad
 
@@ -336,7 +336,7 @@ class ObjectClassification(Base):
       num_to_prefetch: int = 10,
       locations: Sequence[Point] | None = None,
       points: Sequence[PointList] | None = None,
-      **kwargs
+      **kwargs,
   ):
     """Constructor.
 
@@ -353,7 +353,7 @@ class ObjectClassification(Base):
         locations=locations,
         objects=objects,
         points=points,
-        **kwargs
+        **kwargs,
     )
 
     self.results = defaultdict(set)  # class -> ids
@@ -421,13 +421,13 @@ class GraphUpdater(Base):
       bad,
       num_to_prefetch: int = 0,
       points: Sequence[PointList] | None = None,
-      **kwargs
+      **kwargs,
   ):
     super().__init__(
         objects=objects,
         num_to_prefetch=num_to_prefetch,
         points=points,
-        **kwargs
+        **kwargs,
     )
     self.graph = graph
     self.split_objects = []
@@ -446,6 +446,7 @@ class GraphUpdater(Base):
     self.viewer.actions.add('mark-bad', lambda s: self.mark_bad())
     self.viewer.actions.add('next-batch', lambda s: self.next_batch())
     self.viewer.actions.add('prev-batch', lambda s: self.prev_batch())
+    self.viewer.actions.add('isolate', lambda s: self.isolate())
 
     with self.viewer.config_state.txn() as s:
       s.input_event_bindings.viewer['keyj'] = 'next-batch'
@@ -458,12 +459,28 @@ class GraphUpdater(Base):
       s.input_event_bindings.viewer['keys'] = 'accept-split'
       s.input_event_bindings.data_view['shift+mousedown0'] = 'add-split'
       s.input_event_bindings.viewer['keyv'] = 'mark-bad'
+      s.input_event_bindings.viewer['keyi'] = 'isolate'
 
     with self.viewer.txn() as s:
       s.layers['split'] = neuroglancer.SegmentationLayer(
           source=s.layers['seg'].source
       )
       s.layers['split'].visible = False
+
+  def isolate(self):
+    """Removes edges from selected to unselected segments."""
+    sids = set(
+        [sid for sid in self.viewer.state.layers['seg'].segments if sid > 0]
+    )
+    to_remove = []
+    for a, b in self.graph.edges(sids):
+      if a in sids and b in sids:
+        continue
+
+      to_remove.append((a, b))
+
+    self.update_msg(f'removing {len(to_remove)} edges')
+    self.graph.remove_edges_from(to_remove)
 
   def merge_segments(self):
     sids = [sid for sid in self.viewer.state.layers['seg'].segments if sid > 0]
