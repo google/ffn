@@ -56,6 +56,7 @@ class Base:
       objects: Sequence[ObjectItem] | None = None,
       points: Sequence[PointList] | None = None,
       point_layer: str = 'points',
+      agglo: nx.Graph | None = None
   ):
     """Constructor.
 
@@ -66,6 +67,8 @@ class Base:
       points: point annotations to display
       point_layer: name of the annotation layer that will be automatically added
         to the viewer if 'points' are provided
+      agglo: optional agglo graph to apply to the displayed objects, use 't'
+        to toggle whether the graph equivalences are applied
     """
     self.viewer = neuroglancer.Viewer()
     self.num_to_prefetch = num_to_prefetch
@@ -79,7 +82,8 @@ class Base:
 
     self.index = 0
     self.batch = 1
-    self.apply_equivs = False
+    self.apply_equivs = agglo is not None
+    self.agglo = agglo
 
     if locations is not None:
       self.locations = list(locations)
@@ -125,13 +129,27 @@ class Base:
     l = state.layers[layer]
     l.segments = segments
 
-    if not self.apply_equivs:
+    if not self.apply_equivs or layer != 'seg':
       l.equivalences.clear()
     else:
-      l.equivalences.clear()
-      for a in self.todo[self.index : self.index + self.batch]:
-        a = [aa[layer] for aa in a]
-        l.equivalences.union(*a)
+      if self.agglo is not None:
+        em = neuroglancer.EquivalenceMap()
+        seen = set()
+        for item in self.todo[self.index : self.index + self.batch]:
+          sids = item[layer]
+          for sid in sids:
+            if sid not in self.agglo or sid in seen:
+              continue
+            cc = nx.node_connected_component(self.agglo, sid)
+            seen |= set(cc)
+            em.union(*cc)
+
+        l.equivalences = em
+      else:
+        l.equivalences.clear()
+        for a in self.todo[self.index : self.index + self.batch]:
+          a = [aa[layer] for aa in a]
+          l.equivalences.union(*a)
 
   def update_points(
       self, state: neuroglancer.viewer_state.ViewerState, points: PointList
