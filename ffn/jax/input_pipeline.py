@@ -335,20 +335,22 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         'weight': batched_weights,
     }
 
-  def update_seeds(self, batched_seeds: np.ndarray | jax.Array):
+  def update_seeds(self, batched_seeds: list[jax.Array]):
     """Propagates data from `batched_seeds` back to the example generators."""
 
     def _update(
         seeds: list[np.ndarray],
-        batched_seeds: np.ndarray | jax.Array,
+        batched_seeds: list[jax.Array],
         current: list[int],
     ):
-      # Transfer data from device to host if using a JAX array.
+      # Transfer data from device to host.
       batched_seeds = np.array(batched_seeds)
       # Fold batch dimensions back to a single one.
       batched_seeds = np.reshape(
           batched_seeds, [-1] + list(batched_seeds.shape[-4:])
       )
+
+      assert batched_seeds.shape[0] == len(seeds)
 
       dx = self._info.input_seed_size[0] - self._info.pred_mask_size[0]
       dy = self._info.input_seed_size[1] - self._info.pred_mask_size[1]

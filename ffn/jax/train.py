@@ -62,7 +62,8 @@ class TrainState(flax.struct.PyTreeNode):  # pytype: disable=invalid-function-de
 
 
 DataIterator = TypeVar(
-    'DataIterator', tf.data.Iterator  #
+    'DataIterator',
+    tf.data.Iterator,
 )
 
 
@@ -511,7 +512,7 @@ def train_and_evaluate(
   shard_out = (
       replicate_sharding,  # state
       replicate_sharding,  # metrics
-      replicate_sharding,  # logits
+      batch_sharding,  # logits
       replicate_sharding,  # loss scale
   )
   p_train_step = jax.jit(train_fn, shard_in, shard_out)
@@ -610,7 +611,18 @@ def train_and_evaluate(
             )
 
         with training.MeasureTime(timings, 'update_seed'):
-          batch_iter.update_seeds(updated_seed)  # pytype: disable=wrong-arg-types  # jnp-type
+          host_local_seeds = []  # [b, z, y, x, 1] * num_devices
+          dev_to_slice = batch_sharding.addressable_devices_indices_map(
+              updated_seed.shape
+          )
+
+          # Ensure device order is the same as that used to build the
+          # global array in postprocess_batch().
+          assert list(dev_to_slice.keys()) == list(mesh.local_devices)
+          for slc in dev_to_slice.values():
+            host_local_seeds.append(updated_seed[slc])
+
+          batch_iter.update_seeds(host_local_seeds)
 
       with training.MeasureTime(timings, 'admin'):
         if checkpoint_manager.should_save(step) or is_last_step:

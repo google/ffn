@@ -126,7 +126,7 @@ class BatchExampleIter:
     return (batched_seeds, np.concatenate(patches), np.concatenate(labels),
             batched_weights)
 
-  def update_seeds(self, batched_seeds: np.ndarray):
+  def update_seeds(self, batched_seeds: np.typing.ArrayLike):
     """Distributes updated predictions back to the generator buffers.
 
     Args:
