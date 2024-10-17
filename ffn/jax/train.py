@@ -432,7 +432,7 @@ def train_and_evaluate(
         train_state_path, args=ocp.args.StandardRestore(state)
     )
     checkpointed_state['train_iter'] = iter_handler.restore(
-        train_iter_path, args
+        train_iter_path, args=args
     )
     logging.info('Initializing training from %r', config.init_from_cpoint)
   elif latest_step is not None:
