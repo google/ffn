@@ -140,6 +140,7 @@ class Canvas:
       exec_client: executor.ExecutorClient,
       image,
       options,
+      voxel_size_zyx: tuple[int, int, int] = (1, 1, 1),
       counters=None,
       restrictor=None,
       movement_policy_fn=None,
@@ -157,6 +158,7 @@ class Canvas:
       exec_client: client for the executor interface
       image: 3d ndarray-like of shape (z, y, x)
       options: InferenceOptions proto
+      voxel_size_zyx: 3-tuple defining the voxel size as (z, y, x)
       counters: (optional) counter container, where __getitem__ returns a
         counter compatible with the MR Counter API
       restrictor: (optional) a MovementRestrictor object which can exclude some
@@ -179,6 +181,7 @@ class Canvas:
     self.image = image
     self._exec_client = exec_client
     self._exec_client_id = None
+    self.voxel_size_zyx = voxel_size_zyx
 
     self.options = inference_pb2.InferenceOptions()
     self.options.CopyFrom(options)
