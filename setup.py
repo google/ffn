@@ -39,8 +39,9 @@ setup(
     description='Flood-Filling Networks for volumetric instance segmentation',
     long_description=open('README.md').read(),
     install_requires=[
-        'connectomics',
+        'connectomics @ git+https://github.com/google-research/connectomics@main',
         'edt>=2.3.0',
+        'clu',
         'pandas',
         'dataclasses-json>=0.5.6',
         'scikit-image>=0.11.0',
