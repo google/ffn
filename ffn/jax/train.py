@@ -605,12 +605,11 @@ def train_and_evaluate(
         )
 
         with training.MeasureTime(timings, 'metrics'):
-          with jax.spmd_mode('allow_all'):
-            train_metrics = (
-                metrics_update
-                if train_metrics is None
-                else train_metrics.merge(metrics_update)
-            )
+          train_metrics = (
+              metrics_update
+              if train_metrics is None
+              else train_metrics.merge(metrics_update)
+          )
 
         with training.MeasureTime(timings, 'update_seed'):
           host_local_seeds = []  # [b, z, y, x, 1] * num_devices
@@ -644,8 +643,7 @@ def train_and_evaluate(
           h(step)
 
         if step % config.log_loss_every_steps == 0 or is_last_step:
-          with jax.spmd_mode('allow_all'):
-            scalars = train_metrics.compute()
+          scalars = train_metrics.compute()
           for name, values in timings.items():
             scalars[f'time_{name}'] = float(np.mean(values))
             scalars[f'time_{name}/min'] = float(np.min(values))
