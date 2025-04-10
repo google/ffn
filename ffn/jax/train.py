@@ -517,7 +517,8 @@ def train_and_evaluate(
       batch_sharding,  # logits
       replicate_sharding,  # loss scale
   )
-  p_train_step = jax.jit(train_fn, shard_in, shard_out)
+  p_train_step = jax.jit(train_fn, in_shardings=shard_in,
+                         out_shardings=shard_out)
 
   # Initialize summary writer.
   writer = metric_writers.create_default_writer(
