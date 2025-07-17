@@ -74,6 +74,10 @@ class BaseSeedPolicy:
     """
     if self.coords is None:
       self.init_coords()
+
+      if self.coords is None:
+        raise StopIteration()
+
       if self.coords.size:
         margin = np.array(self.canvas.margin)[np.newaxis, ...]
         # Do early filtering of clearly invalid locations (too close to image
@@ -171,6 +175,9 @@ class PolicyPeaks(BaseSeedPolicy):
       if self.canvas.restrictor.seed_mask is not None:
         filt_edges[self.canvas.restrictor.seed_mask] = 1
 
+    if np.all(filt_edges == 1):
+      return
+
     with PolicyPeaks._sem:
       logging.info('peaks: filtering done')
       dt = edt.edt(
@@ -179,6 +186,8 @@ class PolicyPeaks(BaseSeedPolicy):
       logging.info('peaks: edt done')
 
       dt[mask] = -1
+      dt[~np.isfinite(dt)] = -1
+
       idxs = _find_peaks(dt, min_distance=3, threshold_abs=0, threshold_rel=0)
 
       # After skimage upgrade to 0.13.0 peak_local_max returns peaks in
