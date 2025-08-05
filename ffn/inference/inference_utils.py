@@ -24,6 +24,7 @@ import skimage.exposure
 
 from . import storage
 
+
 # Names retained for compatibility with the MR interface.
 # TODO(mjanusz): Drop this requirement or provide a wrapper class for the MR
 # counter so that this is no longer necessary.
@@ -35,11 +36,11 @@ class StatCounter:
     """Initializes the counter.
 
     Args:
-      update: callable taking no arguments; will be called when
-          the counter is incremented
+      update: callable taking no arguments; will be called when the counter is
+        incremented
       name: name of the counter to use for streamz
-      parent: optional StatCounter object to which to propagate
-          any updates of the current counter
+      parent: optional StatCounter object to which to propagate any updates of
+        the current counter
     """
     self._counter = 0
     self._update = update
@@ -79,6 +80,7 @@ class StatCounter:
   @property
   def value(self):
     return self._counter
+
 
 # pylint: enable=invalid-name
 
@@ -137,8 +139,7 @@ class Counters:
         fd.write('%s: %d\n' % (name, counter.value))
 
   def dumps(self) -> str:
-    state = {name: counter.value for name, counter in
-             self._counters.items()}
+    state = {name: counter.value for name, counter in self._counters.items()}
     return json.dumps(state)
 
   def loads(self, encoded_state: str):
@@ -150,13 +151,16 @@ class Counters:
 
 
 @contextlib.contextmanager
-def timer_counter(counters: Counters, name: str, export=True):
+def timer_counter(
+    counters: Counters, name: str, export=True, increment: int = 1
+):
   """Creates a counter tracking time spent in the context.
 
   Args:
     counters: Counters object
     name: counter name
     export: whether to export counter via streamz
+    increment: value by which to increment the underlying counter
 
   Yields:
     tuple of two counters, to track number of calls and time spent on them,
@@ -169,7 +173,7 @@ def timer_counter(counters: Counters, name: str, export=True):
   try:
     yield timer, counter
   finally:
-    counter.Increment()
+    counter.IncrementBy(increment)
     dt = (time.time() - start_time) * MSEC_IN_SEC
     timer.IncrementBy(dt)
 
@@ -204,9 +208,8 @@ def match_histogram(image, lut, mask=None):
   Args:
     image: (z, y, x) ndarray with the source image
     lut: lookup table from `compute_histogram_lut`
-    mask: optional Boolean mask defining areas that
-        are NOT to be considered for CDF calculation
-        after applying CLAHE
+    mask: optional Boolean mask defining areas that are NOT to be considered for
+      CDF calculation after applying CLAHE
 
   Returns:
     None; `image` is modified in place
@@ -222,12 +225,12 @@ def match_histogram(image, lut, mask=None):
     if valid_slice.size == 0:
       continue
 
-    cdf, bins = skimage.exposure.cumulative_distribution(
-        valid_slice)
+    cdf, bins = skimage.exposure.cumulative_distribution(valid_slice)
     cdf = np.array(cdf.tolist() + [1.0])
     bins = np.array(bins.tolist() + [255])
     image[z, ...] = lut[
-        (cdf[np.searchsorted(bins, clahe_slice)] * 255).astype(np.uint8)]
+        (cdf[np.searchsorted(bins, clahe_slice)] * 255).astype(np.uint8)
+    ]
 
 
 def compute_histogram_lut(image):
