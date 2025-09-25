@@ -20,6 +20,9 @@ Use ./compute_partitions.py to generate data for --partition_volumes.
 Note that the volume names you provide in --partition_volumes will
 have to match the volume labels you pass to the training script.
 """
+
+# これはテストです。
+
 from collections import defaultdict
 
 from absl import app
