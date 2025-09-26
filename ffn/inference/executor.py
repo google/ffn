@@ -294,9 +294,14 @@ class ThreadingBatchExecutor(BatchExecutor):
               self.active_clients += 1
               logging.info('client %d starting', client_id)
             else:
-              self.registered_clients.remove(-client_id - 1)
-              logging.info('client %d terminating', -client_id - 1)
-              self.active_clients -= 1
+              try:
+                self.registered_clients.remove(-client_id - 1)
+                logging.info('client %d terminating', -client_id - 1)
+                self.active_clients -= 1
+              except KeyError:
+                logging.warning(
+                    'client %d not known or already terminated', -client_id - 1
+                )
           else:
             client_id, seed, image, fetches = data
             l = len(ready)
