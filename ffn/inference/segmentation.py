@@ -32,7 +32,7 @@ def clear_dust(data: np.ndarray, min_size: int = 10):
   """
   ids, sizes = np.unique(data, return_counts=True)
   small = ids[sizes < min_size]
-  small_mask = np.in1d(data.flat, small).reshape(data.shape)
+  small_mask = np.isin(data.flat, small).ravel().reshape(data.shape)
   data[small_mask] = 0
   return data
 

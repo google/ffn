@@ -391,8 +391,7 @@ def build_mask(masks, corner, subvol_size, mask_volume_map=None,
             src_corner, channel_mask, corner, subvol_size)
 
         if chan_config.values:
-          bool_mask = np.in1d(channel_mask,
-                              chan_config.values).reshape(channel_mask.shape)
+          bool_mask = np.isin(channel_mask, chan_config.values).ravel().reshape(channel_mask.shape)
         else:
           bool_mask = ((channel_mask >= chan_config.min_value) &
                        (channel_mask <= chan_config.max_value))
