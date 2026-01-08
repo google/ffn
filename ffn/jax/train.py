@@ -340,7 +340,7 @@ def _get_tf_writer(writers) -> metric_writers.SummaryWriter | None:
 
 def _get_ocp_args(
     train_iter: DataIterator, restore: bool = True
-) -> DataIterator:
+) -> DataIterator | ocp.args.CheckpointArgs:
   if isinstance(train_iter, tf.data.Iterator):
     return DatasetArgs(train_iter)
 
