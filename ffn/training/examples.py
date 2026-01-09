@@ -70,7 +70,8 @@ def get_example(load_example, eval_tracker: tracker.EvalTracker,
       assert predicted.base is seed
       yield predicted, patches, labels, weights
 
-    eval_tracker.add_patch(full_labels, seed, loss_weights, coord)
+    eval_tracker.add_patch(full_labels, seed, loss_weights, coord,
+                           volume_name=volname)
 
 
 ExampleGenerator = Iterable[tuple[np.ndarray, np.ndarray, np.ndarray,
