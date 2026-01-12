@@ -21,6 +21,7 @@ import threading
 from typing import Any, Callable
 
 from absl import logging
+from connectomics.common import bounding_box
 from connectomics.common import utils
 from ffn.input import volume
 from ffn.jax import tracker
