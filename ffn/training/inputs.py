@@ -785,8 +785,10 @@ def filter_oob(
     use_bboxes: bool = True
 ) -> tf.Tensor:
   radius = np.floor_divide(patch_size, 2)
+  coord = tf.reshape(item['coord'], [1, 3])
+  volname = tf.reshape(item['volname'], [1])
   return coordinates_in_bounds(
-      item['coord'], item['volname'], radius, volinfo_map_string,
+      coord, volname, radius, volinfo_map_string,
       use_bboxes
   )
 

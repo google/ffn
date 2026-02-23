@@ -18,12 +18,14 @@
 import copy
 import dataclasses
 import functools as ft
+import hashlib
 from typing import Any, Callable, Sequence, TypeVar
 
 from absl import logging
 import array_record
 from connectomics.common import array
 from connectomics.common import bounding_box
+from connectomics.common import box_generator
 from connectomics.common import io_utils
 from ffn.input import segmentation
 from ffn.training import augmentation
@@ -193,11 +195,14 @@ def _load_data(
   ret = dict(ex)
   dtype_remap = {tf.uint64: tf.int64}
 
+  ret['coord'] = tf.reshape(ex['coord'], [1, 3])
+  ret['volname'] = tf.reshape(ex['volname'], [1])
+
   for name, vol in config.volumes.items():
     if vol.oob_mask:
       ret[name] = inputs.make_oob_mask(
-          ex['coord'],
-          ex['volname'],
+          ret['coord'],
+          ret['volname'],
           shape=vol.load_shape,
           volinfo_map_string=get_path_str(vol.paths),
       )
@@ -312,7 +317,7 @@ def _filter_coordinates_by_bbox(
 ) -> tf.Tensor:
   ret = tf.numpy_function(
       lambda c, v: _coord_in_bboxes_np(c, v, bboxes),
-      [item['coord'][0], item['volname'][0]],
+      [item['coord'][0], tf.reshape(item['volname'], [-1])[0]],
       tf.bool,
   )
   ret.set_shape([])
