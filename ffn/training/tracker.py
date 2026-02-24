@@ -361,7 +361,7 @@ class EvalTracker:
       for i, summary in enumerate(images):
         summary.tag += '/%d' % i
 
-    total_moves = sum(self.moves.tf_value)
+    total_moves = max(sum(self.moves.tf_value), 1)
     move_summaries = []
     for mt in MoveType:
       move_summaries.append(
@@ -377,14 +377,14 @@ class EvalTracker:
                 tag='fov/masked_voxel_fraction',
                 simple_value=(
                     self.fov_stats.tf_value[FovStat.MASKED_VOXELS]
-                    / self.fov_stats.tf_value[FovStat.TOTAL_VOXELS]
+                    / max(self.fov_stats.tf_value[FovStat.TOTAL_VOXELS], 1)
                 ),
             ),
             tf.Summary.Value(
                 tag='fov/average_weight',
                 simple_value=(
                     self.fov_stats.tf_value[FovStat.WEIGHTS_SUM]
-                    / self.fov_stats.tf_value[FovStat.TOTAL_VOXELS]
+                    / max(self.fov_stats.tf_value[FovStat.TOTAL_VOXELS], 1)
                 ),
             ),
             tf.Summary.Value(
@@ -418,7 +418,7 @@ class EvalTracker:
     )
 
     for r, r_moves in self.moves_by_r.items():
-      total_moves = sum(r_moves.tf_value)
+      total_moves = max(sum(r_moves.tf_value), 1)
       summaries.extend([
           tf.Summary.Value(
               tag='moves/r=%d/correct' % r,

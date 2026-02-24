@@ -122,13 +122,13 @@ class FFNModel:
     pixel_loss *= self.loss_weights
     self.loss = tf.reduce_mean(pixel_loss)
     tf.summary.scalar('pixel_loss', self.loss)
-    self.loss = tf.verify_tensor_all_finite(self.loss, 'Invalid loss detected')
+    self.loss = tf.debugging.check_numerics(self.loss, 'Invalid loss detected')
 
   def set_up_optimizer(self, loss=None, max_gradient_entry_mag=0.7):
     """Sets up the training op for the model."""
     if loss is None:
       loss = self.loss
-    tf.summary.scalar('optimizer_loss', self.loss)
+    tf.summary.scalar('optimizer_loss', loss)
 
     opt = optimizer.optimizer_from_flags()
     self.opt = opt

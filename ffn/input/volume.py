@@ -153,7 +153,7 @@ def _update_config_for_augmentation(
         )
 
       if vol_cfg.filter_shape != (1, 1, 1) and vol_cfg.filter_shape is not None:
-        vol_cfg.filer_shape = tuple(
+        vol_cfg.filter_shape = tuple(
             augmentation.input_size_for_rotated_output(
                 vol_cfg.filter_shape, voxel_size
             )
@@ -174,7 +174,7 @@ def _postprocess_augmented_data(
       shape = vol_cfg.load_shape
 
       def _update_array(x, name=name, shape=shape):
-        setattr(x, name, mask.crop(x[name], (0, 0, 0), shape))
+        x[name] = mask.crop(x[name], (0, 0, 0), shape)
         return x
 
       ds = ds.map(

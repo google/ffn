@@ -369,7 +369,7 @@ def random_contrast_brightness_adjustment(
   Returns:
     tf.Tensor: Adjusted Tensor.
   """
-  adjust_tensor = tf.identity(input_tensor)
+  adjust_tensor = input_tensor
   if contrast_factor_range:
     min_contrast, max_contrast = contrast_factor_range
     contrast_factor = tf.random.uniform([], min_contrast, max_contrast)
@@ -383,7 +383,7 @@ def random_contrast_brightness_adjustment(
   if apply_adjustment_to == 'foreground':
     adjust_tensor = tf.where(seg_tensor > 0, adjust_tensor, input_tensor)
   elif apply_adjustment_to == 'background':
-    adjust_tensor = tf.where(seg_tensor <= 0, input_tensor, adjust_tensor)
+    adjust_tensor = tf.where(seg_tensor <= 0, adjust_tensor, input_tensor)
   return adjust_tensor
 
 
@@ -451,7 +451,7 @@ class PermuteAndReflect:
 
     if self.reflectable_axes.size > 0:
       self.reflect_decisions = (
-          tf.random_uniform([len(self.reflectable_axes)], seed=reflection_seed)
+          tf.random.uniform([len(self.reflectable_axes)], seed=reflection_seed)
           > 0.5
       )
       self.reflected_axes = tf.boolean_mask(
@@ -459,7 +459,7 @@ class PermuteAndReflect:
       )
 
     if self.permutable_axes.size > 0:
-      self.permutation = tf.random_shuffle(
+      self.permutation = tf.random.shuffle(
           self.permutable_axes, seed=permutation_seed
       )
       # full_permutation must be a list rather than an np.array of int32 because

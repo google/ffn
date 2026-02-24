@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tensorflow Python ops and utilities for generating network inputs."""
 
+import functools
 import random
 import re
 from typing import Any, Callable, Optional, Sequence
@@ -553,7 +554,7 @@ def soften_labels(bool_labels, softness=0.05, scope='soften_labels'):
     Tensor with same shape as bool_labels with dtype `float32` and values 0.05
     for False and 0.95 for True.
   """
-  with tf.op_scope([bool_labels, softness], scope):
+  with tf.name_scope(scope):
     label_shape = tf.shape(bool_labels, name='label_shape')
     return tf.where(bool_labels,
                     tf.fill(label_shape, 1.0 - softness, name='soft_true'),
@@ -703,6 +704,35 @@ def sample(
   return sampled_dataset
 
 
+@functools.lru_cache(maxsize=None)
+def _parse_bounding_boxes(
+    volinfo_map_string: str, use_bboxes: bool = True
+) -> dict[bytes, list[bounding_box.BoundingBox]]:
+  boxes_by_volname = {}
+  for mapping in volinfo_map_string.split(','):
+    k, volinfo_path = mapping.split(':')
+    k = k.encode('utf-8')
+    assert k not in boxes_by_volname
+
+    if volinfo_path.endswith('metadata.json'):
+      f = open(volinfo_path, 'r')
+      meta = metadata.VolumeMetadata.from_json(f.read())
+      if use_bboxes:
+        bboxes = meta.bounding_boxes
+      else:
+        bboxes = [
+            bounding_box.BoundingBox(
+                (0, 0, 0),
+                (meta.volume_size.x, meta.volume_size.y, meta.volume_size.z),
+            )
+        ]
+      boxes_by_volname[k] = bboxes
+
+  if not boxes_by_volname:
+    raise ValueError('boxes_by_volname is empty.')
+  return boxes_by_volname
+
+
 def coordinates_in_bounds(
     coordinates: tf.Tensor,
     volname: tf.Tensor,
@@ -734,28 +764,7 @@ def coordinates_in_bounds(
     coordinates or an empty constant of shape `[0, 3]`, which can then be
     passed to batching (e.g. see tests).
   """
-  boxes_by_volname = {}
-  for mapping in volinfo_map_string.split(','):
-    k, volinfo_path = mapping.split(':')
-    k = k.encode('utf-8')
-    assert k not in boxes_by_volname
-
-    if volinfo_path.endswith('metadata.json'):
-      f = open(volinfo_path, 'r')
-      meta = metadata.VolumeMetadata.from_json(f.read())
-      if use_bboxes:
-        bboxes = meta.bounding_boxes
-      else:
-        bboxes = [
-            bounding_box.BoundingBox(
-                (0, 0, 0),
-                (meta.volume_size.x, meta.volume_size.y, meta.volume_size.z),
-            )
-        ]
-      boxes_by_volname[k] = bboxes
-
-  if not boxes_by_volname:
-    raise ValueError('boxes_by_volname is empty.')
+  boxes_by_volname = _parse_bounding_boxes(volinfo_map_string, use_bboxes)
 
   def _in_bounds_fn(coordinates, volname):
     boxes = boxes_by_volname[volname[0]]
@@ -767,8 +776,8 @@ def coordinates_in_bounds(
     return False
 
   with tf.name_scope(name, values=[coordinates, volname]) as scope:
-    assert coordinates.shape_as_list() == [1, 3]
-    assert volname.shape_as_list() == [1]
+    assert coordinates.shape.as_list() == [1, 3]
+    assert volname.shape.as_list() == [1]
     in_bounds = tf.py_func(
         _in_bounds_fn,
         [coordinates, volname],

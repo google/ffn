@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilites for dealing with 2d and 3d object masks."""
+"""Utilities for dealing with 2d and 3d object masks."""
 
 from typing import Optional, Sequence
 
