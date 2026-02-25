@@ -1,5 +1,4 @@
 # Copyright 2024 Google Inc.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -59,6 +58,7 @@ class TrainState(flax.struct.PyTreeNode):  # pytype: disable=invalid-function-de
   opt_state: optax.OptState
   params: flax.core.FrozenDict[str, Any]
   batch_stats: Any
+  ema_params: Any = None
 
 
 DataIterator = TypeVar(
@@ -99,6 +99,7 @@ def create_train_state(
           opt_state=tx.init(params),
           batch_stats=variables.get('batch_stats', None),
           params=params,
+          ema_params=params if config.get('ema_decay', 0.0) > 0.0 else None,
       ),
   )
 
@@ -221,11 +222,24 @@ def train_step(
         (state.params, state.opt_state),
     )
 
+  ema_decay = config.get('ema_decay', 0.0)
+  new_ema_params = state.ema_params
+  if ema_decay > 0.0:
+    if new_ema_params is None:
+      new_ema_params = new_params
+    else:
+      decay = jnp.array(ema_decay, dtype=jnp.float32)
+      decay = jnp.where(state.step == 0, 0.0, decay)
+      new_ema_params = optax.incremental_update(
+          new_params, new_ema_params, step_size=1.0 - decay
+      )
+
   new_state = state.replace(  # pytype: disable=attribute-error
       step=step,
       params=new_params,
       opt_state=new_opt_state,
       batch_stats=new_batch_stats,
+      ema_params=new_ema_params,
   )
 
   lr = schedule(state.opt_state.count)  # pytype: disable=attribute-error
