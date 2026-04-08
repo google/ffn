@@ -55,6 +55,39 @@ class DecisionPointTest(absltest.TestCase):
     self.assertIn((1, 2), points)
     self.assertLen(points, 1)
 
+  def test_find_decision_point_optimize_sparse(self):
+    # 2 segments, but one is very small and should be filtered out
+    seg = np.zeros((100, 80, 60), dtype=np.uint64)
+    seg[:40, :, :] = 1
+    # 2 voxels of label 2
+    seg[60, 0, 0] = 2
+    seg[61, 0, 0] = 2
+
+    # Without optimization, 1 and 2 might connect if they are grown far enough.
+    points = decision_point.find_decision_points(seg, (1, 1, 1))
+    self.assertIn((1, 2), points)
+
+    # With optimization but threshold 0, they still connect (no size filtering)
+    points = decision_point.find_decision_points(
+        seg, (1, 1, 1), optimize_sparse=True, sparse_noise_threshold=0
+    )
+    self.assertIn((1, 2), points)
+
+    # With optimization and threshold >= 2, label 2 is zeroed.
+    # We're left with label 1 (size > 2), so 1 segment -> returns empty
+    points = decision_point.find_decision_points(
+        seg, (1, 1, 1), optimize_sparse=True, sparse_noise_threshold=3
+    )
+    self.assertEmpty(points)
+
+    # With just 1 segment from the start
+    seg = np.zeros((100, 80, 60), dtype=np.uint64)
+    seg[:40, :, :] = 1
+    points = decision_point.find_decision_points(
+        seg, (1, 1, 1), optimize_sparse=True, sparse_noise_threshold=0
+    )
+    self.assertEmpty(points)
+
 
 if __name__ == '__main__':
   absltest.main()

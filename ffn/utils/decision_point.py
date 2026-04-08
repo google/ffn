@@ -19,16 +19,20 @@ from typing import Optional, Sequence
 
 from connectomics.common import bounding_box
 from connectomics.segmentation import labels
+from ffn.inference import segmentation as segmentation_lib
 import numpy as np
 import pandas as pd
 from scipy import ndimage
 
 
-def find_decision_points(seg: np.ndarray,
-                         voxel_size: Sequence[float],
-                         max_distance: Optional[float] = None,
-                         subvol_box: Optional[bounding_box.BoundingBox] = None
-                        ) -> dict[tuple[int, int], tuple[float, np.ndarray]]:
+def find_decision_points(
+    seg: np.ndarray,
+    voxel_size: Sequence[float],
+    max_distance: Optional[float] = None,
+    subvol_box: Optional[bounding_box.BoundingBox] = None,
+    optimize_sparse: bool = False,
+    sparse_noise_threshold: int = 0,
+) -> dict[tuple[int, int], tuple[float, np.ndarray]]:
   """Identifies decision points in a segmentation subvolume.
 
   Args:
@@ -36,15 +40,32 @@ def find_decision_points(seg: np.ndarray,
     voxel_size: 3-tuple (xyz) defining the physical voxel size
     max_distance: maximum distance between the segment and the decision point
       (same units as voxel_size); if None, distances will not be limited
-    subvol_box: selector for a subvolume within `seg` within which
-      to search for decision points; the whole subvolume is always used
-      to compute the distance transform
+    subvol_box: selector for a subvolume within `seg` within which to search for
+      decision points; the whole subvolume is always used to compute the
+      distance transform
+    optimize_sparse: if True, first counts the number of segments in `seg` and
+      returns early if there are fewer than 2.
+    sparse_noise_threshold: if > 0 and `optimize_sparse` is True, ignores
+      components with voxel counts < this threshold when counting segments.
 
   Returns:
     dict from segment ID pairs to tuples of:
       approximate physical distance from the segment to the decision point
       (x, y, z) decision point
   """
+  if optimize_sparse:
+    _, counts = segmentation_lib.clean_up_and_count(
+        seg,
+        split_cc=False,
+        min_size=sparse_noise_threshold,
+        compute_id_map=False,
+    )
+
+    if counts is not None and len([k for k in counts.keys() if k > 0]) <= 1:
+      # If there are 0 or 1 unique segments (excluding background),
+      # they cannot possibly touch another segment.
+      return {}
+
   # EDT is the Euclidean Distance Transform, specifying how far voxels added
   # in 'expanded_seg' are from the seeds in 'seg'.
   expanded_seg, edt = labels.watershed_expand(seg, voxel_size, max_distance)
