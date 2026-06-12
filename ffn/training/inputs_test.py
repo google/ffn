@@ -22,6 +22,7 @@ from connectomics.common import bounding_box
 from connectomics.common import tuples
 from connectomics.volume import metadata
 from ffn.training import inputs
+from google.protobuf import text_format
 import numpy as np
 import tensorflow.compat.v1 as tf
 

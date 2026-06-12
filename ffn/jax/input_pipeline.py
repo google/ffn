@@ -28,6 +28,7 @@ from ffn.jax import tracker
 from ffn.training import examples
 from ffn.training import inputs
 from ffn.training import model as ffn_model
+from google.protobuf import text_format
 import jax
 import jmp
 import ml_collections

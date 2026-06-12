@@ -26,6 +26,7 @@ from connectomics.segmentation import labels as label_utils
 from connectomics.volume import metadata
 from ffn.training import augmentation
 from ffn.training import variables
+from google.protobuf import text_format
 import numpy as np
 import tensorflow.compat.v1 as tf
 from tensorflow.io import gfile
