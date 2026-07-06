@@ -64,7 +64,7 @@ class Runner:
 
   ALL_MASKED = 1
 
-  request: inference_pb2.InferenceRequest
+  request: inference_pb2.InferenceRequest  # pyrefly: ignore[not-a-type]
   executor: executor.BatchExecutor
   init_seg_volume: storage.Volume | None
   _image_volume: storage.Volume | None
@@ -76,7 +76,7 @@ class Runner:
 
   def __init__(self):
     self.counters = inference_utils.Counters()
-    self.executor = None
+    self.executor = None  # pyrefly: ignore[bad-assignment]
     self._exec_interface = executor.ExecutorInterface()
     self.canvases = {}
 
@@ -93,7 +93,7 @@ class Runner:
         self.executor.stop_server()
       except executor.TerminationException:
         pass
-      self.executor = None
+      self.executor = None  # pyrefly: ignore[bad-assignment]
 
   def _load_tf_model_checkpoint(
       self, session: tf.Session, checkpoint_path: str
@@ -115,7 +115,7 @@ class Runner:
 
   def _init_tf_model(
       self,
-      request: inference_pb2.InferenceRequest,
+      request: inference_pb2.InferenceRequest,  # pyrefly: ignore[not-a-type]
       batch_size: int,
       session: Optional[tf.Session] = None,
   ) -> tf.Session:
@@ -201,11 +201,11 @@ class Runner:
       self._shift_mask_volume = _open_or_none(request.shift_mask)
 
       alignment_options = request.alignment_options
-      null_alignment = inference_pb2.AlignmentOptions.NO_ALIGNMENT
+      null_alignment = inference_pb2.AlignmentOptions.NO_ALIGNMENT  # pyrefly: ignore[missing-attribute]
       if not alignment_options or alignment_options.type == null_alignment:
         self._aligner = align.Aligner()
       else:
-        type_name = inference_pb2.AlignmentOptions.AlignType.Name(
+        type_name = inference_pb2.AlignmentOptions.AlignType.Name(  # pyrefly: ignore[missing-attribute]
             alignment_options.type
         )
         error_string = 'Alignment for type %s is not implemented' % type_name
@@ -292,7 +292,7 @@ class Runner:
         else:
           shift_mask_diameter = np.array(self._model_info.input_image_size)
           shift_mask_fov = bounding_box.BoundingBox(
-              start=-(shift_mask_diameter // 2), size=shift_mask_diameter
+              start=-(shift_mask_diameter // 2), size=shift_mask_diameter  # pyrefly: ignore[bad-argument-type]
           )
 
         kwargs.update({
@@ -530,7 +530,7 @@ class Runner:
     self.canvases[corner] = canvas
     canvas.segment_all(
         seed_policy=self.get_seed_policy(corner, subvol_size),
-        partial_segment_iters=partial_segment_iters,
+        partial_segment_iters=partial_segment_iters,  # pyrefly: ignore[unbound-name]
     )
     self.save_segmentation(canvas, alignment, seg_path, prob_path)
     del self.canvases[corner]

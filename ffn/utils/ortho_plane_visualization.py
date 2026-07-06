@@ -45,19 +45,19 @@ def cut_ortho_planes(
     yx, zx, zy.
   """
   if center is None:
-    center = np.array(vol.shape[:3]) // 2
+    center = np.array(vol.shape[:3]) // 2  # pyrefly: ignore[bad-assignment]
 
   planes = []
   full_slice = [slice(None)] * 3
-  for axis, ix in enumerate(center):
+  for axis, ix in enumerate(center):  # pyrefly: ignore[bad-argument-type]
     cut_slice = list(full_slice)
-    cut_slice[axis] = ix
+    cut_slice[axis] = ix  # pyrefly: ignore[unsupported-operation]
     planes.append(vol[tuple(cut_slice)])
     if cross_hair:
       # Copy because cross hair is written into array data.
       plane = planes[-1].copy()
       i = 0
-      for ax, c in enumerate(center):
+      for ax, c in enumerate(center):  # pyrefly: ignore[bad-argument-type]
         if ax != axis:
           # Make axis i the 0-axis an work in-place.
           view = np.rollaxis(plane, i)

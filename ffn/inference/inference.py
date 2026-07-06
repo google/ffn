@@ -653,7 +653,7 @@ class Canvas:
         sid = self.get_next_segment_id()
         self.segmentation[sel][mask] = sid
         if self.keep_probability_maps:
-          self.seg_prob[sel][mask] = storage.quantize_probability(
+          self.seg_prob[sel][mask] = storage.quantize_probability(  # pyrefly: ignore[unsupported-operation]
               expit(self.seed[sel][mask])
           )
 
@@ -806,8 +806,8 @@ class Canvas:
             ),
             segmentation=self.segmentation,
             seed=self.seed,
-            origins=self.origins,
-            overlaps=self.overlaps,
+            origins=self.origins,  # pyrefly: ignore[bad-argument-type]
+            overlaps=self.overlaps,  # pyrefly: ignore[bad-argument-type]
             min_pos=self._min_pos,
             max_pos=self._max_pos,
             history=np.array(self.history),

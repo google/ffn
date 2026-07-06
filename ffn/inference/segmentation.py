@@ -128,13 +128,13 @@ def clean_up_and_count(seg: np.ndarray,
   cc_to_orig, cc_to_count = None, None
 
   if compute_id_map or compute_counts:
-    unique_result_tuple = np.unique(
+    unique_result_tuple = np.unique(  # pyrefly: ignore[no-matching-overload]
         seg.ravel(), return_index=compute_id_map, return_counts=compute_counts)
     cc_ids = unique_result_tuple[0]
   if compute_id_map:
-    cc_idx = unique_result_tuple[1]
-    orig_ids = seg_orig.ravel()[cc_idx]
-    cc_to_orig = dict(zip(cc_ids, orig_ids))
+    cc_idx = unique_result_tuple[1]  # pyrefly: ignore[unbound-name]
+    orig_ids = seg_orig.ravel()[cc_idx]  # pyrefly: ignore[unbound-name]
+    cc_to_orig = dict(zip(cc_ids, orig_ids))  # pyrefly: ignore[unbound-name]
   if compute_counts:
     cc_counts = unique_result_tuple[-1]
     cc_to_count = dict(zip(cc_ids, cc_counts))

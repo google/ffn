@@ -51,7 +51,7 @@ class BaseSeedPolicy:
 
     # TODO(mjanusz): Remove circular reference between Canvas and seed policies.
     self.canvas = weakref.proxy(canvas)
-    self.coords: np.ndarray = None  # shape: [N, 3] (zyx order in the last dim)
+    self.coords: np.ndarray = None  # shape: [N, 3] (zyx order in the last dim)  # pyrefly: ignore[bad-assignment]
     self.idx = 0
 
   def init_coords(self):
@@ -180,7 +180,7 @@ class PolicyPeaks(BaseSeedPolicy):
 
     with PolicyPeaks._sem:
       logging.info('peaks: filtering done')
-      dt = edt.edt(
+      dt = edt.edt(  # pyrefly: ignore[not-callable]
           1 - filt_edges,
           anisotropy=self.canvas.voxel_size_zyx).astype(np.float32)
       logging.info('peaks: edt done')
@@ -250,7 +250,7 @@ class PolicyPeaks2d(BaseSeedPolicy):
         filt_edges[self.canvas.restrictor.mask[z, :, :]] = 1
 
       # Distance transform
-      dt = edt.edt(1 - filt_edges).astype(np.float32)
+      dt = edt.edt(1 - filt_edges).astype(np.float32)  # pyrefly: ignore[not-callable]
 
       idxs = _find_peaks(
           dt,
@@ -293,7 +293,7 @@ class PolicyFillEmptySpace(BaseSeedPolicy):
   def init_coords(self):
     logging.info('fill_empty: starting')
 
-    dt = edt.edt(self.canvas.segmentation == 0).astype(np.float32)
+    dt = edt.edt(self.canvas.segmentation == 0).astype(np.float32)  # pyrefly: ignore[not-callable]
 
     # Set absolute threshold to <1 to avoid generating seeds in areas that are
     # already segmented, where dt >= 1. This also helps to avoid slow execution

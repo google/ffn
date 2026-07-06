@@ -60,7 +60,7 @@ class NumpyArray(np.ndarray):
 
   def __new__(cls, default_value=0, **kwargs):
     ret = super(NumpyArray, cls).__new__(cls, **kwargs)
-    ret.default_value = default_value
+    ret.default_value = default_value  # pyrefly: ignore[missing-attribute]
     return ret
 
   def __init__(self, *args, **kwargs):
@@ -68,7 +68,7 @@ class NumpyArray(np.ndarray):
     self.clear()
 
   def clear(self):
-    self[...] = self.default_value
+    self[...] = self.default_value  # pyrefly: ignore[missing-attribute]
 
 
 def decorated_volume(settings, **kwargs) -> Volume:
@@ -317,7 +317,7 @@ def clip_subvolume_to_bounds(corner, size, volume):
   volume_bounds = bounding_box.BoundingBox(start=(0, 0, 0), size=volume_size)
   subvolume_bounds = bounding_box.BoundingBox(start=corner, size=size)
   clipped_bounds = volume_bounds.intersection(subvolume_bounds)
-  return clipped_bounds.start, clipped_bounds.size
+  return clipped_bounds.start, clipped_bounds.size  # pyrefly: ignore[missing-attribute]
 
 
 def build_mask(masks, corner, subvol_size, mask_volume_map=None,
@@ -385,8 +385,8 @@ def build_mask(masks, corner, subvol_size, mask_volume_map=None,
       else:
         logging.fatal('Unsupported mask source: %s', source_type)
 
-      for chan_config in channels:
-        channel_mask = mask[chan_config.channel, ...]
+      for chan_config in channels:  # pyrefly: ignore[unbound-name]
+        channel_mask = mask[chan_config.channel, ...]  # pyrefly: ignore[unbound-name]
         channel_mask = alignment.align_and_crop(
             src_corner, channel_mask, corner, subvol_size)
 

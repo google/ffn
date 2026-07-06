@@ -47,7 +47,7 @@ class BoundingBox(object):
       ValueError: on bad inputs.
     """
     if start is not None:
-      if (isinstance(start, bounding_box_pb2.BoundingBox) or
+      if (isinstance(start, bounding_box_pb2.BoundingBox) or  # pyrefly: ignore[invalid-argument]
           isinstance(start, BoundingBox)):
         if size is not None or end is not None:
           raise ValueError('a BoundingBox object/proto must be specified alone')
@@ -170,7 +170,7 @@ class BoundingBox(object):
                                                tuple(self.size))
 
   def __eq__(self, other):
-    if isinstance(other, bounding_box_pb2.BoundingBox):
+    if isinstance(other, bounding_box_pb2.BoundingBox):  # pyrefly: ignore[invalid-argument]
       other = BoundingBox(other)
     elif not isinstance(other, BoundingBox):
       return False
@@ -191,9 +191,9 @@ def _required(bbox: Optional[BoundingBox]) -> BoundingBox:
 
 def intersection(box0, box1):
   """Get intersection between two bounding boxes, or None."""
-  if isinstance(box0, bounding_box_pb2.BoundingBox):
+  if isinstance(box0, bounding_box_pb2.BoundingBox):  # pyrefly: ignore[invalid-argument]
     box0 = BoundingBox(box0.start, box0.size)
-  if isinstance(box1, bounding_box_pb2.BoundingBox):
+  if isinstance(box1, bounding_box_pb2.BoundingBox):  # pyrefly: ignore[invalid-argument]
     box1 = BoundingBox(box1.start, box1.size)
   if not isinstance(box0, BoundingBox):
     raise ValueError('box0 must be a BoundingBox')

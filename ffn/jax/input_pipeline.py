@@ -124,7 +124,7 @@ def load_examples(
       if config.loss_mask_invert:
         loss_mask = tf.equal(ex['loss_mask'], 0)
       else:
-        loss_mask = ex['loss_mask'] > 0
+        loss_mask = ex['loss_mask'] > 0  # pyrefly: ignore[unsupported-operation]
 
       weights *= 1.0 - tf.cast(loss_mask, tf.float32)
 
@@ -136,7 +136,7 @@ def load_examples(
         seg.shape[3] // 2,  #
         0,
     ]
-    lom = tf.logical_and(seg > 0, tf.equal(seg, center_val))
+    lom = tf.logical_and(seg > 0, tf.equal(seg, center_val))  # pyrefly: ignore[unsupported-operation]
     labels = inputs.soften_labels(lom)
 
     lx, ly, lz = load_shape
@@ -266,7 +266,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     self._fs_lock = threading.Lock()
     self._fs = set()
     for i, gen in enumerate(self._generators):
-      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))
+      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[missing-argument]
 
     # Prefetching of complete batches.
     self._batch_tpe = futures.ThreadPoolExecutor(max_workers=batch_prefetch)
@@ -337,7 +337,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         'weight': batched_weights,
     }
 
-  def update_seeds(self, batched_seeds: list[jax.Array]):
+  def update_seeds(self, batched_seeds: list[jax.Array]):  # pyrefly: ignore[bad-override]
     """Propagates data from `batched_seeds` back to the example generators."""
 
     def _update(
@@ -346,13 +346,13 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         current: list[int],
     ):
       # Transfer data from device to host.
-      batched_seeds = np.array(batched_seeds)
+      batched_seeds = np.array(batched_seeds)  # pyrefly: ignore[bad-assignment]
       # Fold batch dimensions back to a single one.
-      batched_seeds = np.reshape(
-          batched_seeds, [-1] + list(batched_seeds.shape[-4:])
+      batched_seeds = np.reshape(  # pyrefly: ignore[bad-assignment]
+          batched_seeds, [-1] + list(batched_seeds.shape[-4:])  # pyrefly: ignore[missing-attribute]
       )
 
-      assert batched_seeds.shape[0] == len(seeds)
+      assert batched_seeds.shape[0] == len(seeds)  # pyrefly: ignore[missing-attribute]
 
       dx = self._info.input_seed_size[0] - self._info.pred_mask_size[0]
       dy = self._info.input_seed_size[1] - self._info.pred_mask_size[1]
@@ -360,7 +360,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
 
       for i, _ in enumerate(current):
         if dz == 0 and dy == 0 and dx == 0:
-          seeds[i][:] = batched_seeds[i, ...]
+          seeds[i][:] = batched_seeds[i, ...]  # pyrefly: ignore[bad-index]
         else:
           seeds[i][
               :,  #
@@ -368,13 +368,13 @@ class MixingBatchExampleIter(BatchDictExampleIter):
               dy // 2 : -(dy - dy // 2),  #
               dx // 2 : -(dx - dx // 2),  #
               :,
-          ] = batched_seeds[i, ...]
+          ] = batched_seeds[i, ...]  # pyrefly: ignore[bad-index]
 
       with self._fs_lock:
         for gen_idx in current:
           gen = self._generators[gen_idx]
           self._fs.add(
-              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))
+              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[missing-argument]
           )
 
     # Distribute data asynchronously.

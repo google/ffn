@@ -38,7 +38,7 @@ def ToVector3j(*args):
   else:
     raise ValueError('Expected three ints, a 3-sequence of ints, or a Vector3j')
 
-  if isinstance(seq, vector_pb2.Vector3j): return seq
+  if isinstance(seq, vector_pb2.Vector3j): return seq  # pyrefly: ignore[invalid-argument]
   if isinstance(seq, numpy.ndarray) and seq.dtype.kind in 'iu':
     seq = [int(s) for s in seq]
   if len(seq) != 3:
@@ -61,7 +61,7 @@ def To3Tuple(vector):
   Raises:
     ValueError: Unsupported argument type.
   """
-  if isinstance(vector, (vector_pb2.Vector3j, vector_pb2.Vector3f)):
+  if isinstance(vector, (vector_pb2.Vector3j, vector_pb2.Vector3f)):  # pyrefly: ignore[invalid-argument]
     return (vector.x, vector.y, vector.z)
   if isinstance(vector, numpy.ndarray):
     if vector.shape != (3,):

@@ -83,7 +83,7 @@ def create_train_state(
     The initialized TrainState with the optimizer.
   """
   model = model_util.model_from_config(config)
-  rng = {'params': rng, 'dropout': jax.random.PRNGKey(1)}
+  rng = {'params': rng, 'dropout': jax.random.PRNGKey(1)}  # pyrefly: ignore[bad-assignment]
   variables = model.init(rng, jnp.ones(input_shape))
   params = variables['params']
 
@@ -106,9 +106,9 @@ def create_train_state(
 
 @flax.struct.dataclass
 class TrainMetrics(metrics.Collection):
-  loss: metrics.Average.from_output('loss')
-  loss_std: metrics.Std.from_output('loss')
-  learning_rate: metrics.LastValue.from_output('learning_rate')
+  loss: metrics.Average.from_output('loss')  # pyrefly: ignore[invalid-annotation]
+  loss_std: metrics.Std.from_output('loss')  # pyrefly: ignore[invalid-annotation]
+  learning_rate: metrics.LastValue.from_output('learning_rate')  # pyrefly: ignore[invalid-annotation]
 
 
 def _updated_seed(seed: jnp.ndarray, update: jnp.ndarray) -> jnp.ndarray:
@@ -366,7 +366,7 @@ def _make_ckpt_args(
 ) -> ocp.args.CheckpointArgs:
   args = {'train_state': ocp.args.StandardSave(state)}
   if 'train_iter' in checkpoint_items:
-    args['train_iter'] = _get_ocp_args(train_iter, restore=False)
+    args['train_iter'] = _get_ocp_args(train_iter, restore=False)  # pyrefly: ignore[bad-assignment]
   return ocp.args.Composite(**args)
 
 
@@ -377,8 +377,8 @@ def train_and_evaluate(
     checkpoint_items: Sequence[str] = ('train_state', 'train_iter'),
 ):
   """Main training loop."""
-  workdir = epath.Path(workdir)
-  workdir.mkdir(parents=True, exist_ok=True)
+  workdir = epath.Path(workdir)  # pyrefly: ignore[bad-assignment]
+  workdir.mkdir(parents=True, exist_ok=True)  # pyrefly: ignore[missing-attribute]
 
   rng = training.get_rng(config.seed)
 
@@ -468,7 +468,7 @@ def train_and_evaluate(
   )
   checkpointed_state = {'train_state': state}
   if 'train_iter' in checkpoint_items:
-    checkpointed_state['train_iter'] = train_iter
+    checkpointed_state['train_iter'] = train_iter  # pyrefly: ignore[bad-assignment]
   latest_step = checkpoint_manager.latest_step()
   # If an initial checkpoint is provided and the checkpointing library does not
   # report a 'latest' checkpoint, then we are starting a new experiment.
@@ -487,8 +487,8 @@ def train_and_evaluate(
       if isinstance(train_iter, tf.data.Iterator):
         iter_handler = item_handlers['train_iter']
         args = DatasetArgs(train_iter)
-      checkpointed_state['train_iter'] = iter_handler.restore(
-          train_iter_path, args=args
+      checkpointed_state['train_iter'] = iter_handler.restore(  # pyrefly: ignore[bad-assignment]
+          train_iter_path, args=args  # pyrefly: ignore[bad-argument-type]
       )
 
     logging.info('Initializing training from %r', config.init_from_cpoint)
@@ -497,7 +497,7 @@ def train_and_evaluate(
         'train_state': ocp.args.StandardRestore(state),
     }
     if 'train_iter' in checkpoint_items:
-      restore_args['train_iter'] = _get_ocp_args(train_iter)
+      restore_args['train_iter'] = _get_ocp_args(train_iter)  # pyrefly: ignore[bad-assignment, bad-specialization]
     checkpointed_state = checkpoint_manager.restore(
         latest_step,
         args=ocp.args.Composite(**restore_args),
@@ -602,7 +602,7 @@ def train_and_evaluate(
   eval_tracker = tracker.EvalTracker(eval_shape_zyx, fov_shifts)
 
   batch_iter = input_pipeline.get_batch_iter(
-      train_iter,
+      train_iter,  # pyrefly: ignore[bad-argument-type]
       eval_tracker,
       policy_fn,
       info,
@@ -691,7 +691,7 @@ def train_and_evaluate(
           train_state = jax.tree.map(np.array, state)
           checkpoint_manager.save(
               step,
-              args=_make_ckpt_args(train_state, train_iter, checkpoint_items),
+              args=_make_ckpt_args(train_state, train_iter, checkpoint_items),  # pyrefly: ignore[bad-specialization]
           )
 
         if checkpoint_manager.reached_preemption(step):
@@ -727,7 +727,7 @@ def train_and_evaluate(
             assert tfw is not None
             # TODO(mjanusz): Find a cleaner and less brittle way of saving
             # raw summaries.
-            with tfw._summary_writer.as_default():
+            with tfw._summary_writer.as_default():  # pyrefly: ignore[missing-attribute]
               for s in raws:
                 tf.summary.experimental.write_raw_pb(s, step=step)
 

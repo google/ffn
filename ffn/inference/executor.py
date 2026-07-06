@@ -227,7 +227,7 @@ class ThreadingBatchExecutor(BatchExecutor):
                counters: inference_utils.Counters,
                batch_size: int,
                expected_clients: int = 1):
-    super(ThreadingBatchExecutor, self).__init__(interface, model, model_info,
+    super(ThreadingBatchExecutor, self).__init__(interface, model, model_info,  # pyrefly: ignore[bad-argument-type]
                                                  session, counters, batch_size)
 
     # Total clients seen during the lifetime of the executor.
@@ -310,7 +310,7 @@ class ThreadingBatchExecutor(BatchExecutor):
             ready.append(client_id)
 
       if ready:
-        self._schedule_batch(ready, fetches)
+        self._schedule_batch(ready, fetches)  # pyrefly: ignore[unbound-name]
 
     logging.info('Executor terminating.')
 
