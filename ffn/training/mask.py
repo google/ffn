@@ -45,7 +45,8 @@ def crop(tensor, offset, crop_shape):
     off_y = shape[-3] // 2 - crop_shape[1] // 2 + offset[1]
     off_x = shape[-2] // 2 - crop_shape[0] // 2 + offset[0]
 
-    # Note: native indexing syntax not used below due to TPU compatibility.
+    # Note: native indexing syntax not used below due to accelerator
+    # compatibility.
     if len(offset) == 2:
       cropped = tf.slice(
           tensor,

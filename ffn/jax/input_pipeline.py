@@ -24,6 +24,7 @@ from absl import logging
 from connectomics.common import bounding_box
 from connectomics.common import utils
 from ffn.input import volume
+from ffn.jax import accelerator_utils
 from ffn.jax import tracker
 from ffn.training import examples
 from ffn.training import inputs
@@ -151,7 +152,10 @@ def load_examples(
         patches=(emt - config.image_mean) / config.image_stddev,
     )
 
-  batch_size = config.per_device_batch_size * jax.local_device_count()
+  topo_info = accelerator_utils.get_accelerator_topology_info(
+      config.per_device_batch_size
+  )
+  batch_size = topo_info.host_batch_size
 
   if cfg.sampling.vsi_coords:
     num_examples = getattr(config, 'train_num_coords', 100_000_000)

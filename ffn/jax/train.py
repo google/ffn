@@ -27,6 +27,7 @@ from clu import metrics
 from clu import parameter_overview
 from connectomics.jax import training
 from etils import epath
+from ffn.jax import accelerator_utils
 from ffn.jax import input_pipeline
 from ffn.jax import tracker
 from ffn.training import examples
@@ -521,13 +522,27 @@ def train_and_evaluate(
     train_iter = checkpointed_state['train_iter']
   initial_step = int(state.step) + 1
 
-  global_batch_size = config.per_device_batch_size * jax.device_count()
-  host_batch_size = config.per_device_batch_size * jax.local_device_count()
+  # Compute batch sizes based on chip count, not core count. Multi-core
+  # chips (e.g., tpu7x with 2 cores/chip) expose each core as a
+  # separate JAX device, which would accidentally double the batch size.
+  topo_info = accelerator_utils.get_accelerator_topology_info(
+      config.per_device_batch_size
+  )
+
+  logging.info(
+      'cores_per_chip=%d, num_chips=%d (global), local_chips=%d, '
+      'global_batch_size=%d, host_batch_size=%d',
+      topo_info.cores_per_chip,
+      topo_info.num_chips,
+      topo_info.local_chips,
+      topo_info.global_batch_size,
+      topo_info.host_batch_size,
+  )
 
   # Upper bound. The real number will be lower as not all steps are
   # taken for every example.
   steps_per_epoch = (
-      num_total_examples // global_batch_size * (len(fov_shifts) + 1)
+      num_total_examples // topo_info.global_batch_size * (len(fov_shifts) + 1)
   )
   num_train_steps = steps_per_epoch * config.num_epochs
   logging.info(
@@ -593,7 +608,9 @@ def train_and_evaluate(
   logging.info('Starting training loop at step %d.', initial_step)
   hooks = []
   report_progress = training.ReportProgress(
-      global_batch_size, num_train_steps=num_train_steps, writer=writer
+      topo_info.global_batch_size,
+      num_train_steps=num_train_steps,
+      writer=writer,
   )
   if jax.process_index() == 0:
     hooks.append(report_progress)
@@ -608,7 +625,7 @@ def train_and_evaluate(
       info,
       config,
       seed_shape=tuple(train_canvas_size(info, config).tolist()[::-1]),
-      batch_size=host_batch_size,
+      batch_size=topo_info.host_batch_size,
       jmp_policy=jmp_policy,
   )
 
@@ -623,9 +640,9 @@ def train_and_evaluate(
       per_device_data = np.split(x, len(mesh.local_devices), axis=0)
 
       on_dev = jax.device_put(per_device_data, mesh.local_devices)
-      global_shape = (
-          len(batch_sharding.device_set) * config.per_device_batch_size,
-      ) + per_device_data[0].shape[1:]
+      global_shape = (topo_info.global_batch_size,) + per_device_data[0].shape[
+          1:
+      ]
       return jax.make_array_from_single_device_arrays(
           global_shape, batch_sharding, on_dev
       )
@@ -672,16 +689,12 @@ def train_and_evaluate(
           )
 
         with training.MeasureTime(timings, 'update_seed'):
-          host_local_seeds = []  # [b, z, y, x, 1] * num_devices
-          dev_to_slice = batch_sharding.addressable_devices_indices_map(
-              updated_seed.shape
-          )
-
           # Ensure device order is the same as that used to build the
           # global array in postprocess_batch().
-          assert list(dev_to_slice.keys()) == list(mesh.local_devices)
-          for slc in dev_to_slice.values():
-            host_local_seeds.append(updated_seed[slc])
+          shard_by_device = {
+              s.device: s.data for s in updated_seed.addressable_shards
+          }
+          host_local_seeds = [shard_by_device[d] for d in mesh.local_devices]
 
           batch_iter.update_seeds(host_local_seeds)
 
