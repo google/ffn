@@ -381,6 +381,7 @@ class JAXExecutor(ThreadingBatchExecutor):
         ret = self._apply_fn(data)
       except Exception as e:  # pylint:disable=broad-except
         logging.exception(e)
+        self._interface.exit_request.set()
         # Terminate the whole program on failure.
         _thread.interrupt_main()  # pytype: disable=module-attr
         raise e
