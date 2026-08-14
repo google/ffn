@@ -22,7 +22,6 @@ from connectomics.segmentation import labels
 from ffn.inference import segmentation as segmentation_lib
 import numpy as np
 import pandas as pd
-from scipy import ndimage
 
 
 def find_decision_points(
@@ -73,8 +72,12 @@ def find_decision_points(
     expanded_seg = expanded_seg[subvol_box.to_slice3d()]
     edt = edt[subvol_box.to_slice3d()]
 
-  a = expanded_seg
-  dataframes = []
+  a_list = []
+  b_list = []
+  dist_list = []
+  x_list = []
+  y_list = []
+  z_list = []
 
   # Need to examine 7 offsets to identify all possible connections within a
   # 3x3x3 neighborhood.
@@ -82,34 +85,51 @@ def find_decision_points(
     if off == (0, 0, 0):
       continue
 
-    b = ndimage.shift(expanded_seg, off, order=0)
-    touching = (a > 0) & (b > 0) & (a != b)
+    # Slicing optimization
+    slice_a = []
+    slice_b = []
+    for o in off:
+      if o == 0:
+        slice_a.append(slice(None))
+        slice_b.append(slice(None))
+      elif o == -1:
+        slice_a.append(slice(0, -1))
+        slice_b.append(slice(1, None))
+    slice_a = tuple(slice_a)
+    slice_b = tuple(slice_b)
+
+    a_part = expanded_seg[slice_a]
+    b_part = expanded_seg[slice_b]
+    touching = (a_part > 0) & (b_part > 0) & (a_part != b_part)
     if not np.any(touching):
       continue
 
-    edt2 = np.roll(edt, off, (0, 1, 2))
-    mean_edt = (edt[touching] + edt2[touching]) / 2
+    mean_edt = (edt[slice_a][touching] + edt[slice_b][touching]) / 2
 
     # Enforce standard ID order within the pair (low, hi).
-    ab = np.array([a[touching], b[touching]], dtype=np.uint64)
+    ab = np.array([a_part[touching], b_part[touching]], dtype=np.uint64)
     ab.sort(axis=0)
 
     z, y, x = np.where(touching)
-    dataframes.append(
-        pd.DataFrame({
-            'a': ab[0, :],
-            'b': ab[1, :],
-            'dist': mean_edt,
-            'x': x,
-            'y': y,
-            'z': z
-        }))
+    a_list.append(ab[0, :])
+    b_list.append(ab[1, :])
+    dist_list.append(mean_edt)
+    x_list.append(x)
+    y_list.append(y)
+    z_list.append(z)
 
-  if not dataframes:
+  if not a_list:
     return {}
 
   # Find points with the minimum distance.
-  df = pd.concat(dataframes)
+  df = pd.DataFrame({
+      'a': np.concatenate(a_list),
+      'b': np.concatenate(b_list),
+      'dist': np.concatenate(dist_list),
+      'x': np.concatenate(x_list),
+      'y': np.concatenate(y_list),
+      'z': np.concatenate(z_list),
+  })
   min_points = df[df.groupby(['a', 'b'])['dist'].transform('min') == df['dist']]
 
   ret = {}
