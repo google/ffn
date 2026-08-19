@@ -30,10 +30,36 @@ def clear_dust(data: np.ndarray, min_size: int = 10):
   Returns:
     the data array (modified in place)
   """
-  ids, sizes = np.unique(data, return_counts=True)
-  small = ids[sizes < min_size]
-  small_mask = np.isin(data.flat, small).ravel().reshape(data.shape)
-  data[small_mask] = 0
+  if data.size == 0 or min_size <= 0 or not np.any(data):
+    return data
+
+  max_id = int(data.max())
+  is_integer = np.issubdtype(data.dtype, np.integer)
+  min_id = data.min() if np.issubdtype(data.dtype, np.signedinteger) else 0
+
+  # Use bincount + lookup table for small ID ranges (e.g. local subvolume IDs)
+  # where the counts and lookup array allocations (~80MB max) are small and
+  # O(N + max_id) is significantly faster than O(N log N) np.unique.
+  # For larger or globally relabeled sparse IDs, fall back to np.unique to avoid
+  # excessive memory allocation in bincount/lookup tables.
+  if is_integer and min_id >= 0 and max_id < 10_000_000:
+    counts = np.bincount(data.ravel())
+    ids = np.nonzero(counts)[0]
+    if ids.size > 0 and ids[0] == 0:
+      ids = ids[1:]
+    sizes = counts[ids]
+    small = ids[sizes < min_size]
+    if small.size > 0:
+      lookup = np.zeros(max_id + 1, dtype=data.dtype)
+      lookup[:] = np.arange(max_id + 1)
+      lookup[small] = 0
+      data[...] = lookup[data]
+  else:
+    ids, sizes = np.unique(data, return_counts=True)
+    small = ids[(sizes < min_size) & (ids != 0)]
+    if small.size > 0:
+      small_mask = np.isin(data.flat, small).ravel().reshape(data.shape)
+      data[small_mask] = 0
   return data
 
 
@@ -117,6 +143,16 @@ def clean_up_and_count(seg: np.ndarray,
     compute_id_map or compute_counts is False, the respective returned tuple
     member will be None.
   """
+  if not np.any(seg):
+    if seg.size == 0:
+      return ({} if compute_id_map else None, {} if compute_counts else None)
+    zero_val = seg.dtype.type(0)
+    cc_to_orig = {zero_val: zero_val} if compute_id_map else None
+    cc_to_count = (
+        {zero_val: np.int64(seg.size)} if compute_counts else None
+    )
+    return cc_to_orig, cc_to_count
+
   if compute_id_map:
     seg_orig = seg.copy()
 

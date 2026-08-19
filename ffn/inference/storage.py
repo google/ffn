@@ -457,6 +457,9 @@ def load_segmentation(segmentation_dir, corner, allow_cpoint=False,
                        target_path)
 
     origins = data['origins'].item()
+    if not np.any(seg):
+      return np.zeros(seg.shape, dtype=np.uint64), {}
+
     output = seg.astype(np.uint64)
 
     logging.info('loading segmentation from: %s', target_path)
