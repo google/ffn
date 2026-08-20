@@ -39,12 +39,8 @@ import tensorflow.compat.v1 as tf
 
 from ..training import model as ffn_model
 from . import inference_utils
+from .errors import TerminationException
 from .inference_utils import timer_counter
-
-
-class TerminationException(Exception):  # pylint: disable=g-bad-exception-name
-  """Indicates that the program has been requested to shut down."""
-  pass
 
 
 class ExecutorInterface:
