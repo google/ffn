@@ -22,7 +22,6 @@ from typing import Callable, Iterable, Optional, Sequence
 import numpy as np
 from scipy import special
 
-from ..inference import movement
 from . import mask
 from . import model as ffn_model
 from . import tracker
@@ -283,6 +282,76 @@ def no_offsets(info: ffn_model.ModelInfo, seed: np.ndarray, labels: np.ndarray,
   yield (0, 0, 0)
 
 
+# TODO(mjanusz): This has the potential problem that when an 'Y'-like or more
+# complex fork is present, the model could fail to follow one of the branches.
+# Doesn't seem to matter in practice though, at least with the current
+# FoVs/datasets.
+#
+# For larger FoVs, we would need to threshold the probability map for every
+# face, and look at the max probability point in  every connected component
+# within a face. Probably best to implement this in C++ and just use a Python
+# wrapper.
+def get_scored_move_offsets(
+    deltas: tuple[int, int, int] | np.ndarray,
+    prob_map: np.ndarray,
+    threshold: float = 0.9,
+):
+  """Looks for potential moves for a FFN.
+
+  The possible moves are determined by extracting probability map values
+  corresponding to cuboid faces at +/- deltas, and considering the highest
+  probability value for every face.
+
+  Args:
+    deltas: (z,y,x) tuple of base move offsets for the 3 axes
+    prob_map: current probability map as a (z,y,x) numpy array
+    threshold: minimum score required at the new FoV center for a move to be
+      considered valid
+
+  Yields:
+    tuples of:
+      score (probability at the new FoV center),
+      position offset tuple (z,y,x) relative to center of prob_map
+
+    The order of the returned tuples is arbitrary and should not be depended
+    upon. In particular, the tuples are not necessarily sorted by score.
+  """
+  center = np.array(prob_map.shape) // 2
+  assert center.size == 3
+  # Selects a working subvolume no more than +/- delta away from the current
+  # center point.
+  subvol_sel = [slice(c - dx, c + dx + 1) for c, dx in zip(center, deltas)]
+
+  done = set()
+  for axis, axis_delta in enumerate(deltas):
+    if axis_delta == 0:
+      continue
+    for axis_offset in (-axis_delta, axis_delta):
+      # Move exactly by the delta along the current axis, and select the face
+      # of the subvolume orthogonal to the current axis.
+      face_sel = subvol_sel[:]
+      face_sel[axis] = axis_offset + center[axis]
+      face_prob = prob_map[tuple(face_sel)]
+      shape = face_prob.shape
+
+      # Find voxel with maximum activation.
+      face_pos = np.unravel_index(face_prob.argmax(), shape)
+      score = face_prob[face_pos]
+
+      # Only move if activation crosses threshold.
+      if score < threshold:
+        continue
+
+      # Convert within-face position to be relative vs the center of the face.
+      relative_pos = [face_pos[0] - shape[0] // 2, face_pos[1] - shape[1] // 2]
+      relative_pos.insert(axis, axis_offset)
+      ret = (score, tuple(relative_pos))
+
+      if ret not in done:
+        done.add(ret)
+        yield ret
+
+
 def max_pred_offsets(info: ffn_model.ModelInfo, seed: np.ndarray,
                      labels: np.ndarray, eval_tracker: tracker.EvalTracker,
                      threshold: float, max_radius: np.ndarray):
@@ -321,7 +390,7 @@ def max_pred_offsets(info: ffn_model.ModelInfo, seed: np.ndarray,
     # Look for new offsets within the updated seed.
     curr_seed = mask.crop_and_pad(seed, offset, info.pred_mask_size[::-1])
     todos = sorted(
-        movement.get_scored_move_offsets(
+        get_scored_move_offsets(
             info.deltas[::-1], curr_seed[0, ..., 0], threshold=threshold),
         reverse=True)
     queue.extend((x[2] + offset[0], x[1] + offset[1], x[0] + offset[2])
