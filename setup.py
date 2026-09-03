@@ -24,6 +24,7 @@ setup(
     packages=[
         'ffn',
         'ffn.inference',
+        'ffn.secgan',
         'ffn.training',
         'ffn.training.models',
         'ffn.utils',
@@ -55,5 +56,9 @@ setup(
         'absl-py>=0.1.4',
         'tf-slim>=1.1.0',
         'jax>=0.2.25',
+        'flax',
+        'optax',
+        'orbax-checkpoint',
+        'ml_collections',
     ],
 )
