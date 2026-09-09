@@ -270,7 +270,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     self._fs_lock = threading.Lock()
     self._fs = set()
     for i, gen in enumerate(self._generators):
-      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[missing-argument]
+      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[bad-argument-type, missing-argument]
 
     # Prefetching of complete batches.
     self._batch_tpe = futures.ThreadPoolExecutor(max_workers=batch_prefetch)
@@ -378,7 +378,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         for gen_idx in current:
           gen = self._generators[gen_idx]
           self._fs.add(
-              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[missing-argument]
+              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[bad-argument-type, missing-argument]
           )
 
     # Distribute data asynchronously.
