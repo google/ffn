@@ -280,7 +280,7 @@ def sample_coordinates(
       'coord': [1, 3] XYZ int64 array
       'volname': [1] string array
   """
-  if config.sampling.bounding_boxes:
+    if config.sampling.bounding_boxes:
     boxes_cfg = []
     volume_names = []
     # Compile boxes and volumes strings.
@@ -317,7 +317,10 @@ def _filter_coordinates_by_bbox(
 ) -> tf.Tensor:
   ret = tf.numpy_function(
       lambda c, v: _coord_in_bboxes_np(c, v, bboxes),
-      [item['coord'][0], tf.reshape(item['volname'], [-1])[0]],
+      [
+          tf.reshape(item['coord'], [-1, 3])[0],
+          tf.reshape(item['volname'], [-1])[0],
+      ],
       tf.bool,
   )
   ret.set_shape([])
