@@ -1245,6 +1245,11 @@ def _create_dataset_from_volinfo(
   """Loads volumetric data patches and normalizes them."""
   if bboxes_txt is None:
     bboxes_txt = [None] * len(volinfo_paths)
+  if len(volinfo_paths) != len(bboxes_txt):
+    raise ValueError(
+        'volinfo_paths and bboxes_txt must be same length. (Multiple bboxes '
+        'on a single volinfo should be specified as a single textproto with '
+        'multiple box entries.)')
 
   paths = {}
   bounding_boxes = {}
