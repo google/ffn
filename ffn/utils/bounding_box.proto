@@ -18,7 +18,7 @@ syntax = "proto2";
 
 package ffn;
 
-import "utils/vector.proto";
+import "ffn/utils/vector.proto";
 
 // Describes a 3-dimensional axis-aligned hyperrectangular region of voxels.
 // The region contains whole numbers of rows, columns and layers of voxels

@@ -15,7 +15,7 @@
 // Protos to store statistics about resegmentation results.
 syntax = "proto2";
 
-import "utils/vector.proto";
+import "ffn/utils/vector.proto";
 
 package ffn;
 
