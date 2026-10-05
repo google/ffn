@@ -1314,7 +1314,7 @@ def create_input_pipeline(
       image_b_volinfo, bbox_b, patch_size_xyz, rng_b, config
   )
 
-  ds = tf.data.Dataset.zip((ds_a, ds_b))  # pyrefly: ignore[bad-argument-type]
+  ds = tf.data.Dataset.zip((ds_a, ds_b))
   ds = ds.prefetch(128)
   return ds
 

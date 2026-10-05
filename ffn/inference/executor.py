@@ -195,7 +195,7 @@ class BatchExecutor:
       logging.exception(e)
       # If the executor fails, the whole process becomes useless and we need
       # to make sure it gets terminated.
-      _thread.interrupt_main()  # pytype: disable=module-attr
+      _thread.interrupt_main()
       time.sleep(10)
       os._exit(1)  # pylint:disable=protected-access
 
@@ -325,7 +325,7 @@ class ThreadingBatchExecutor(BatchExecutor):
         logging.exception(e)
         # If calling TF didn't work (faulty hardware, misconfiguration, etc),
         # we want to terminate the whole program.
-        _thread.interrupt_main()  # pytype: disable=module-attr
+        _thread.interrupt_main()
         raise e
 
     with timer_counter(self.counters, 'executor-output'):
@@ -379,7 +379,7 @@ class JAXExecutor(ThreadingBatchExecutor):
         logging.exception(e)
         self._interface.exit_request.set()
         # Terminate the whole program on failure.
-        _thread.interrupt_main()  # pytype: disable=module-attr
+        _thread.interrupt_main()
         raise e
 
       ret = np.array(ret)

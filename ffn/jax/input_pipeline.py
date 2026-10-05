@@ -125,7 +125,7 @@ def load_examples(
       if config.loss_mask_invert:
         loss_mask = tf.equal(ex['loss_mask'], 0)
       else:
-        loss_mask = ex['loss_mask'] > 0  # pyrefly: ignore[unsupported-operation]
+        loss_mask = ex['loss_mask'] > 0
 
       weights *= 1.0 - tf.cast(loss_mask, tf.float32)
 
@@ -137,7 +137,7 @@ def load_examples(
         seg.shape[3] // 2,  #
         0,
     ]
-    lom = tf.logical_and(seg > 0, tf.equal(seg, center_val))  # pyrefly: ignore[unsupported-operation]
+    lom = tf.logical_and(seg > 0, tf.equal(seg, center_val))
     labels = inputs.soften_labels(lom)
 
     lx, ly, lz = load_shape
@@ -270,7 +270,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     self._fs_lock = threading.Lock()
     self._fs = set()
     for i, gen in enumerate(self._generators):
-      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[bad-argument-type, missing-argument]
+      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[bad-argument-type]
 
     # Prefetching of complete batches.
     self._batch_tpe = futures.ThreadPoolExecutor(max_workers=batch_prefetch)
@@ -378,7 +378,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         for gen_idx in current:
           gen = self._generators[gen_idx]
           self._fs.add(
-              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[bad-argument-type, missing-argument]
+              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[bad-argument-type]
           )
 
     # Distribute data asynchronously.

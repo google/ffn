@@ -54,7 +54,7 @@ import tensorflow as tf
 from connectomics.jax.models import util as model_util
 
 
-class TrainState(flax.struct.PyTreeNode):  # pytype: disable=invalid-function-definition  # dataclass_transform
+class TrainState(flax.struct.PyTreeNode):
   step: int
   opt_state: optax.OptState
   params: flax.core.FrozenDict[str, Any]
@@ -235,7 +235,7 @@ def train_step(
           new_params, new_ema_params, step_size=1.0 - decay
       )
 
-  new_state = state.replace(  # pytype: disable=attribute-error
+  new_state = state.replace(
       step=step,
       params=new_params,
       opt_state=new_opt_state,
@@ -243,7 +243,7 @@ def train_step(
       ema_params=new_ema_params,
   )
 
-  lr = schedule(state.opt_state.count)  # pytype: disable=attribute-error
+  lr = schedule(state.opt_state.count)  # pyrefly: ignore[missing-attribute]
   metrics_update = TrainMetrics.single_from_model_output(
       loss=loss, learning_rate=lr
   )
@@ -407,9 +407,9 @@ def train_and_evaluate(
       load_shape=tuple(train_image_size(info, config)),
       data_service_address=data_service_address,
   )
-  train_iter = iter(train_ds)  # pytype: disable=wrong-arg-types
+  train_iter = iter(train_ds)
 
-  logging.info('train_elem_shape=%r', train_iter.element_spec['em'].shape)  # pytype:disable=attribute-error
+  logging.info('train_elem_shape=%r', train_iter.element_spec['em'].shape)
 
   # batch, z, y, x, (image, seed)
   input_shape = [1] + np.array(info.input_image_size).tolist()[::-1] + [2]
@@ -469,7 +469,7 @@ def train_and_evaluate(
   )
   checkpointed_state = {'train_state': state}
   if 'train_iter' in checkpoint_items:
-    checkpointed_state['train_iter'] = train_iter  # pyrefly: ignore[bad-assignment]
+    checkpointed_state['train_iter'] = train_iter
   latest_step = checkpoint_manager.latest_step()
   # If an initial checkpoint is provided and the checkpointing library does not
   # report a 'latest' checkpoint, then we are starting a new experiment.
@@ -498,7 +498,7 @@ def train_and_evaluate(
         'train_state': ocp.args.StandardRestore(state),
     }
     if 'train_iter' in checkpoint_items:
-      restore_args['train_iter'] = _get_ocp_args(train_iter)  # pyrefly: ignore[bad-assignment, bad-specialization]
+      restore_args['train_iter'] = _get_ocp_args(train_iter)  # pyrefly: ignore[bad-assignment]
     checkpointed_state = checkpoint_manager.restore(
         latest_step,
         args=ocp.args.Composite(**restore_args),

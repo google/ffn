@@ -54,7 +54,7 @@ class DynamicImage:
 
   def UpdateFromPIL(self, new_img):
     # pylint: disable=g-import-not-at-top
-    from IPython import display  # pytype:disable=import-error
+    from IPython import display
 
     display.clear_output(wait=True)
     image = BytesIO()
