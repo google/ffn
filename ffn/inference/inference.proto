@@ -16,8 +16,8 @@ syntax = "proto2";
 
 package ffn;
 
-import "utils/vector.proto";
-import "utils/bounding_box.proto";
+import "ffn/utils/vector.proto";
+import "ffn/utils/bounding_box.proto";
 
 message DecoratedVolume {
   oneof volume_path {

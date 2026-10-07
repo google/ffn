@@ -16,8 +16,8 @@ syntax = "proto2";
 
 package ffn;
 
-import "utils/vector.proto";
-import "inference/inference.proto";
+import "ffn/utils/vector.proto";
+import "ffn/inference/inference.proto";
 
 message ConsensusRequest {
   optional ffn.SegmentationSource segmentation1 = 1;
