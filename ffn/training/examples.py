@@ -14,6 +14,8 @@
 # ==============================================================================
 """Utilities for building training examples for FFN training."""
 
+from __future__ import annotations
+
 import collections
 from concurrent import futures
 import itertools
