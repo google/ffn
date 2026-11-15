@@ -139,6 +139,9 @@ def _find_peaks(distances, **kwargs):
   return idxs
 
 
+_PEAKS_SEM = threading.Semaphore(4)
+
+
 class PolicyPeaks(BaseSeedPolicy):
   """Attempts to find points away from edges in the image.
 
@@ -148,7 +151,7 @@ class PolicyPeaks(BaseSeedPolicy):
 
   # Limit the number of concurrent threads computing the local maxima. This
   # operation causes temporary increase in memory usage.
-  _sem = threading.Semaphore(4)
+  _sem = _PEAKS_SEM
 
   def init_coords(self):
     logging.info('peaks: starting')
@@ -280,28 +283,112 @@ class PolicyPeaks2d(BaseSeedPolicy):
     logging.info('2d peaks: found %d total local maxima', self.coords.shape[0])
 
 
-class PolicyFillEmptySpace(BaseSeedPolicy):
-  """Selects points in unsegmented parts of the image.
+def _normalize_sort_cmp(sort_cmp: str) -> str:
+  mode = sort_cmp.strip().lower()
+  if mode in ('ascending', 'asc'):
+    return 'ascending'
+  if mode in ('descending', 'desc'):
+    return 'descending'
+  if mode in ('distance', 'dist'):
+    return 'distance'
+  raise ValueError(
+      f'Unsupported sort_cmp={sort_cmp!r}; expected one of '
+      "'ascending', 'descending', or 'distance'."
+  )
 
-  Seed points are created in a local maxima of the distance transform
-  of the segmenetation.
+
+def find_empty_space_peaks(
+    policy: BaseSeedPolicy,
+    min_distance: int = 2,
+    threshold_abs: float = 0.5,
+    sort_cmp: str = 'ascending',
+    black_border: bool = True,
+    mask: np.ndarray | None = None,
+) -> np.ndarray:
+  """Finds local EDT maxima inside unsegmented, unmasked canvas regions."""
+  mode = _normalize_sort_cmp(sort_cmp)
+  if mask is None:
+    mask = policy.get_exclusion_mask()
+  empty = (policy.canvas.segmentation == 0) & ~mask
+  if not np.any(empty):
+    return np.empty((0, 3), dtype=np.int64)
+
+  with _PEAKS_SEM:
+    dt = edt.edt(empty, black_border=black_border).astype(np.float32)  # pyrefly: ignore[not-callable]
+    # Mark excluded and non-finite voxels negative so threshold_abs=0 never
+    # produces spurious peaks in segmented/masked areas and to avoid slow
+    # execution caused by:
+    # https://github.com/scikit-image/scikit-image/issues/5161.
+    dt[~empty] = -1
+    dt[~np.isfinite(dt)] = -1
+    idxs = _find_peaks(
+        dt,
+        min_distance=min_distance,
+        threshold_abs=threshold_abs,
+        threshold_rel=0,
+    )
+
+  logging.info('fill_empty: found %d local maxima', idxs.shape[0])
+  if idxs.shape[0] == 0:
+    return np.empty((0, 3), dtype=np.int64)
+
+  if mode == 'distance':
+    ordered = sorted(
+        ((int(z), int(y), int(x)) for z, y, x in idxs),
+        key=lambda c: (-float(dt[c]), c),
+    )
+  else:
+    ordered = sorted(
+        ((int(z), int(y), int(x)) for z, y, x in idxs),
+        reverse=(mode == 'descending'),
+    )
+  return np.asarray(ordered, dtype=np.int64)
+
+
+class PolicyFillEmptySpace(BaseSeedPolicy):
+  """Selects points in unsegmented, unmasked parts of the image.
+
+  Seed points are created at local maxima of the Euclidean distance transform
+  of the unsegmented, unmasked region.
 
   Use this policy to try to fill fragments of the smallest branches in an
   otherwise complete segmentation in datasets with little to no ECS.
   """
 
+  def __init__(
+      self,
+      canvas: Any,
+      min_distance: int = 2,
+      threshold_abs: float = 0.5,
+      sort_cmp: str = 'ascending',
+      black_border: bool = True,
+      **kwargs: Any,
+  ):
+    """Initializes PolicyFillEmptySpace.
+
+    Args:
+      canvas: Inference Canvas object.
+      min_distance: Minimum distance (in voxels) between local peaks.
+      threshold_abs: Minimum EDT value (in voxels) for local peaks.
+      sort_cmp: Seed ordering ('ascending', 'descending', or 'distance').
+      black_border: Whether to treat subvolume borders as boundaries for EDT.
+      **kwargs: Forwarded to BaseSeedPolicy.
+    """
+    super().__init__(canvas, **kwargs)
+    self._min_distance = min_distance
+    self._threshold_abs = threshold_abs
+    self._sort_cmp = _normalize_sort_cmp(sort_cmp)
+    self._black_border = black_border
+
   def init_coords(self):
     logging.info('fill_empty: starting')
-
-    dt = edt.edt(self.canvas.segmentation == 0).astype(np.float32)  # pyrefly: ignore[not-callable]
-
-    # Set absolute threshold to <1 to avoid generating seeds in areas that are
-    # already segmented, where dt >= 1. This also helps to avoid slow execution
-    # caused by https://github.com/scikit-image/scikit-image/issues/5161
-    idxs = _find_peaks(dt, min_distance=2, threshold_abs=0.5, threshold_rel=0)
-
-    logging.info('fill_empty: found %d local maxima', idxs.shape[0])
-    self.coords = np.array(sorted((z, y, x) for z, y, x in idxs))
+    self.coords = find_empty_space_peaks(
+        self,
+        min_distance=self._min_distance,
+        threshold_abs=self._threshold_abs,
+        sort_cmp=self._sort_cmp,
+        black_border=self._black_border,
+    )
 
 
 class PolicyMax(BaseSeedPolicy):
