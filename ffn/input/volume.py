@@ -18,12 +18,14 @@
 import copy
 import dataclasses
 import functools as ft
+import hashlib
 from typing import Any, Callable, Sequence, TypeVar
 
 from absl import logging
 import array_record
 from connectomics.common import array
 from connectomics.common import bounding_box
+from connectomics.common import box_generator
 from connectomics.common import io_utils
 from ffn.input import segmentation
 from ffn.training import augmentation
@@ -151,7 +153,7 @@ def _update_config_for_augmentation(
         )
 
       if vol_cfg.filter_shape != (1, 1, 1) and vol_cfg.filter_shape is not None:
-        vol_cfg.filer_shape = tuple(
+        vol_cfg.filter_shape = tuple(
             augmentation.input_size_for_rotated_output(
                 vol_cfg.filter_shape, voxel_size
             )
@@ -172,7 +174,7 @@ def _postprocess_augmented_data(
       shape = vol_cfg.load_shape
 
       def _update_array(x, name=name, shape=shape):
-        setattr(x, name, mask.crop(x[name], (0, 0, 0), shape))
+        x[name] = mask.crop(x[name], (0, 0, 0), shape)
         return x
 
       ds = ds.map(
@@ -193,11 +195,14 @@ def _load_data(
   ret = dict(ex)
   dtype_remap = {tf.uint64: tf.int64}
 
+  ret['coord'] = tf.reshape(ex['coord'], [1, 3])
+  ret['volname'] = tf.reshape(ex['volname'], [1])
+
   for name, vol in config.volumes.items():
     if vol.oob_mask:
       ret[name] = inputs.make_oob_mask(
-          ex['coord'],
-          ex['volname'],
+          ret['coord'],
+          ret['volname'],
           shape=vol.load_shape,
           volinfo_map_string=get_path_str(vol.paths),
       )
@@ -275,7 +280,7 @@ def sample_coordinates(
       'coord': [1, 3] XYZ int64 array
       'volname': [1] string array
   """
-  if config.sampling.bounding_boxes:
+    if config.sampling.bounding_boxes:
     boxes_cfg = []
     volume_names = []
     # Compile boxes and volumes strings.
@@ -285,45 +290,41 @@ def sample_coordinates(
     ds = inputs.sample_patch_coordinates(
         boxes_cfg, volume_names, rng_seed=rng_seed
     )
-  elif config.sampling.bag_coords:
-    raise NotImplementedError('bag file reading not supported yet.')
-  elif config.sampling.arrayrecord_coords:
-
-    def _make_source(pattern):
-      return array_record.ArrayRecordDataSource(
-          sorted(tf.io.gfile.glob(pattern))
-      )
-
-    if isinstance(config.sampling.arrayrecord_coords, str):
-      sources = _make_source(config.sampling.arrayrecord_coords)
-      weights = [1.0]
-    else:
-      sources, weights = [], []
-      for pattern, weight in config.sampling.arrayrecord_coords.items():
-        sources.append(_make_source(pattern))
-        weights.append(weight)
-
-    def _tf_load(idx, source):
-      return tf.numpy_function(
-          lambda x, src=source: src[x], [idx], [tf.string], stateful=False
-      )[0]
-
-    def _sample_indices(source, seed):
-      rng = np.random.default_rng(seed)
-      ds = tf.data.Dataset.from_tensor_slices(rng.permutation(len(source)))
-      ds = ds.map(lambda x, src=source: _tf_load(x, source=src))
-      return ds
-
-    all_ds = [_sample_indices(s, rng_seed) for s in sources]
-
-    weights = np.array(weights)
-    weights = weights.astype(float) / weights.sum()
-    ds = tf.data.Dataset.sample_from_datasets(all_ds, weights, seed=rng_seed)
-    ds = ds.map(inputs.parse_tf_coords, deterministic=True)
   else:
     raise ValueError('No sampling scheme specified.')
 
   return ds
+
+
+def _coord_in_bboxes_np(
+    coord: np.ndarray,
+    volname: bytes,
+    bboxes: dict[str, Sequence[bounding_box.BoundingBox]],
+) -> bool:
+  """Checks if coordinates are in bounding boxes."""
+  volname = volname.decode('utf-8')
+  if volname not in bboxes:
+    return True
+  for bbox in bboxes[volname]:
+    if np.all(coord >= bbox.start) and np.all(coord < bbox.end):
+      return True
+  return False
+
+
+def _filter_coordinates_by_bbox(
+    item: dict[str, tf.Tensor],
+    bboxes: dict[str, Sequence[bounding_box.BoundingBox]],
+) -> tf.Tensor:
+  ret = tf.numpy_function(
+      lambda c, v: _coord_in_bboxes_np(c, v, bboxes),
+      [
+          tf.reshape(item['coord'], [-1, 3])[0],
+          tf.reshape(item['volname'], [-1])[0],
+      ],
+      tf.bool,
+  )
+  ret.set_shape([])
+  return ret
 
 
 def load_and_augment_subvolumes(
@@ -357,6 +358,14 @@ def load_and_augment_subvolumes(
 
   if transform_locations is not None:
     ds = transform_locations(ds, config)
+
+  if config.sampling.bounding_boxes:
+    ds = ds.filter(
+        ft.partial(
+            _filter_coordinates_by_bbox,
+            bboxes=config.sampling.bounding_boxes,
+        )
+    )
 
   for vol in config.volumes.values():
     if vol.filter_shape is not None:

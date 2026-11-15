@@ -8,4 +8,4 @@ The raw .png images were converted into h5 files using the png_to_h5.py script.
 Due to size, the files are stored in Google Cloud Storage. To create a local
 copy, run:
 
-  gsutil rsync -r -x ".*.gz" gs://ffn-flyem-fib25/ .
+  gcloud storage rsync --recursive --exclude ".*.gz" gs://ffn-flyem-fib25/ .

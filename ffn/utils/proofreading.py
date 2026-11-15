@@ -465,6 +465,7 @@ class GraphUpdater(Base):
     self.viewer.actions.add('next-batch', lambda s: self.next_batch())
     self.viewer.actions.add('prev-batch', lambda s: self.prev_batch())
     self.viewer.actions.add('isolate', lambda s: self.isolate())
+    self.viewer.actions.add('toggle-equiv', lambda s: self.toggle_equiv())
 
     with self.viewer.config_state.txn() as s:
       s.input_event_bindings.viewer['keyj'] = 'next-batch'
@@ -478,6 +479,7 @@ class GraphUpdater(Base):
       s.input_event_bindings.data_view['shift+mousedown0'] = 'add-split'
       s.input_event_bindings.viewer['keyv'] = 'mark-bad'
       s.input_event_bindings.viewer['keyi'] = 'isolate'
+      s.input_event_bindings.viewer['keyt'] = 'toggle-equiv'
 
     with self.viewer.txn() as s:
       s.layers['split'] = neuroglancer.SegmentationLayer(

@@ -1,5 +1,4 @@
 # Copyright 2024 Google Inc.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -28,6 +27,7 @@ from clu import metrics
 from clu import parameter_overview
 from connectomics.jax import training
 from etils import epath
+from ffn.jax import accelerator_utils
 from ffn.jax import input_pipeline
 from ffn.jax import tracker
 from ffn.training import examples
@@ -54,11 +54,12 @@ import tensorflow as tf
 from connectomics.jax.models import util as model_util
 
 
-class TrainState(flax.struct.PyTreeNode):  # pytype: disable=invalid-function-definition  # dataclass_transform
+class TrainState(flax.struct.PyTreeNode):
   step: int
   opt_state: optax.OptState
   params: flax.core.FrozenDict[str, Any]
   batch_stats: Any
+  ema_params: Any = None
 
 
 DataIterator = TypeVar(
@@ -83,7 +84,7 @@ def create_train_state(
     The initialized TrainState with the optimizer.
   """
   model = model_util.model_from_config(config)
-  rng = {'params': rng, 'dropout': jax.random.PRNGKey(1)}
+  rng = {'params': rng, 'dropout': jax.random.PRNGKey(1)}  # pyrefly: ignore[bad-assignment]
   variables = model.init(rng, jnp.ones(input_shape))
   params = variables['params']
 
@@ -99,15 +100,16 @@ def create_train_state(
           opt_state=tx.init(params),
           batch_stats=variables.get('batch_stats', None),
           params=params,
+          ema_params=params if config.get('ema_decay', 0.0) > 0.0 else None,
       ),
   )
 
 
 @flax.struct.dataclass
 class TrainMetrics(metrics.Collection):
-  loss: metrics.Average.from_output('loss')
-  loss_std: metrics.Std.from_output('loss')
-  learning_rate: metrics.LastValue.from_output('learning_rate')
+  loss: metrics.Average.from_output('loss')  # pyrefly: ignore[invalid-annotation]
+  loss_std: metrics.Std.from_output('loss')  # pyrefly: ignore[invalid-annotation]
+  learning_rate: metrics.LastValue.from_output('learning_rate')  # pyrefly: ignore[invalid-annotation]
 
 
 def _updated_seed(seed: jnp.ndarray, update: jnp.ndarray) -> jnp.ndarray:
@@ -221,14 +223,27 @@ def train_step(
         (state.params, state.opt_state),
     )
 
-  new_state = state.replace(  # pytype: disable=attribute-error
+  ema_decay = config.get('ema_decay', 0.0)
+  new_ema_params = state.ema_params
+  if ema_decay > 0.0:
+    if new_ema_params is None:
+      new_ema_params = new_params
+    else:
+      decay = jnp.array(ema_decay, dtype=jnp.float32)
+      decay = jnp.where(state.step == 0, 0.0, decay)
+      new_ema_params = optax.incremental_update(
+          new_params, new_ema_params, step_size=1.0 - decay
+      )
+
+  new_state = state.replace(
       step=step,
       params=new_params,
       opt_state=new_opt_state,
       batch_stats=new_batch_stats,
+      ema_params=new_ema_params,
   )
 
-  lr = schedule(state.opt_state.count)  # pytype: disable=attribute-error
+  lr = schedule(state.opt_state.count)  # pyrefly: ignore[missing-attribute]
   metrics_update = TrainMetrics.single_from_model_output(
       loss=loss, learning_rate=lr
   )
@@ -340,26 +355,31 @@ def _get_tf_writer(writers) -> metric_writers.SummaryWriter | None:
 
 def _get_ocp_args(
     train_iter: DataIterator, restore: bool = True
-) -> DataIterator:
+) -> DataIterator | ocp.args.CheckpointArgs:
   if isinstance(train_iter, tf.data.Iterator):
     return DatasetArgs(train_iter)
 
 
-def _make_ckpt_args(state, train_iter: DataIterator) -> ocp.args.CheckpointArgs:
-  return ocp.args.Composite(
-      train_state=ocp.args.StandardSave(state),
-      train_iter=_get_ocp_args(train_iter, restore=False),
-  )
+def _make_ckpt_args(
+    state,
+    train_iter: DataIterator,
+    checkpoint_items: Sequence[str] = ('train_state', 'train_iter'),
+) -> ocp.args.CheckpointArgs:
+  args = {'train_state': ocp.args.StandardSave(state)}
+  if 'train_iter' in checkpoint_items:
+    args['train_iter'] = _get_ocp_args(train_iter, restore=False)  # pyrefly: ignore[bad-assignment]
+  return ocp.args.Composite(**args)
 
 
 def train_and_evaluate(
     config: ml_collections.ConfigDict,
     workdir: str,
     data_service_address: str | None = None,
+    checkpoint_items: Sequence[str] = ('train_state', 'train_iter'),
 ):
   """Main training loop."""
-  workdir = epath.Path(workdir)
-  workdir.mkdir(parents=True, exist_ok=True)
+  workdir = epath.Path(workdir)  # pyrefly: ignore[bad-assignment]
+  workdir.mkdir(parents=True, exist_ok=True)  # pyrefly: ignore[missing-attribute]
 
   rng = training.get_rng(config.seed)
 
@@ -387,9 +407,9 @@ def train_and_evaluate(
       load_shape=tuple(train_image_size(info, config)),
       data_service_address=data_service_address,
   )
-  train_iter = iter(train_ds)  # pytype: disable=wrong-arg-types
+  train_iter = iter(train_ds)
 
-  logging.info('train_elem_shape=%r', train_iter.element_spec['em'].shape)  # pytype:disable=attribute-error
+  logging.info('train_elem_shape=%r', train_iter.element_spec['em'].shape)
 
   # batch, z, y, x, (image, seed)
   input_shape = [1] + np.array(info.input_image_size).tolist()[::-1] + [2]
@@ -402,20 +422,54 @@ def train_and_evaluate(
   rng, dropout_rng = jax.random.split(rng)
 
   item_handlers = {}
-  if isinstance(train_iter, tf.data.Iterator):
+  if 'train_iter' in checkpoint_items and isinstance(
+      train_iter, tf.data.Iterator
+  ):
     item_handlers = {'train_iter': DatasetCheckpointHandler('ckpt', True)}
 
   # Checkpointing init.
   checkpoint_dir = epath.Path(workdir) / 'checkpoints'
+
+  options_kwargs = {}
+  if config.get('checkpoint_every_minutes'):
+    options_kwargs['save_decision_policy'] = (
+        ocp.checkpoint_managers.AnySavePolicy([
+            ocp.checkpoint_managers.ContinuousCheckpointingPolicy(
+                minimum_interval_secs=int(config.checkpoint_every_minutes * 60)
+            ),
+            ocp.checkpoint_managers.PreemptionCheckpointingPolicy(),
+        ])
+    )
+  else:
+    options_kwargs['save_interval_steps'] = config.checkpoint_every_steps
+
+  policies = []
+  if config.get('keep_checkpoint_every_minutes'):
+    policies.append(
+        ocp.checkpoint_managers.EveryNSeconds(
+            interval_secs=int(config.keep_checkpoint_every_minutes * 60)
+        )
+    )
+  if config.get('max_checkpoints_to_keep') is not None:
+    policies.append(
+        ocp.checkpoint_managers.LatestN(n=config.max_checkpoints_to_keep)
+    )
+  if policies:
+    options_kwargs['preservation_policy'] = (
+        ocp.checkpoint_managers.AnyPreservationPolicy(policies)
+    )
+
+  checkpoint_options = ocp.CheckpointManagerOptions(**options_kwargs)
+
   checkpoint_manager = ocp.CheckpointManager(
       checkpoint_dir,
-      item_names=('train_state', 'train_iter'),
+      item_names=tuple(checkpoint_items),
       item_handlers=item_handlers,
-      options=ocp.CheckpointManagerOptions(
-          save_interval_steps=config.checkpoint_every_steps
-      ),
+      options=checkpoint_options,
   )
-  checkpointed_state = {'train_state': state, 'train_iter': train_iter}
+  checkpointed_state = {'train_state': state}
+  if 'train_iter' in checkpoint_items:
+    checkpointed_state['train_iter'] = train_iter
   latest_step = checkpoint_manager.latest_step()
   # If an initial checkpoint is provided and the checkpointing library does not
   # report a 'latest' checkpoint, then we are starting a new experiment.
@@ -424,26 +478,30 @@ def train_and_evaluate(
   if config.init_from_cpoint and latest_step is None:
     handler = ocp.StandardCheckpointHandler()
     train_state_path = epath.Path(config.init_from_cpoint) / 'train_state'
-    train_iter_path = epath.Path(config.init_from_cpoint) / 'train_iter'
-
-    if isinstance(train_iter, tf.data.Iterator):
-      iter_handler = item_handlers['train_iter']
-      args = DatasetArgs(train_iter)
 
     checkpointed_state['train_state'] = handler.restore(
         train_state_path, args=ocp.args.StandardRestore(state)
     )
-    checkpointed_state['train_iter'] = iter_handler.restore(
-        train_iter_path, args=args
-    )
+
+    if 'train_iter' in checkpoint_items:
+      train_iter_path = epath.Path(config.init_from_cpoint) / 'train_iter'
+      if isinstance(train_iter, tf.data.Iterator):
+        iter_handler = item_handlers['train_iter']
+        args = DatasetArgs(train_iter)
+      checkpointed_state['train_iter'] = iter_handler.restore(  # pyrefly: ignore[bad-assignment]
+          train_iter_path, args=args  # pyrefly: ignore[bad-argument-type]
+      )
+
     logging.info('Initializing training from %r', config.init_from_cpoint)
   elif latest_step is not None:
+    restore_args = {
+        'train_state': ocp.args.StandardRestore(state),
+    }
+    if 'train_iter' in checkpoint_items:
+      restore_args['train_iter'] = _get_ocp_args(train_iter)  # pyrefly: ignore[bad-assignment]
     checkpointed_state = checkpoint_manager.restore(
         latest_step,
-        args=ocp.args.Composite(
-            train_state=ocp.args.StandardRestore(state),
-            train_iter=_get_ocp_args(train_iter),
-        ),
+        args=ocp.args.Composite(**restore_args),
     )
     logging.info('Restored checkpoint for step %d', latest_step)
 
@@ -460,16 +518,31 @@ def train_and_evaluate(
   # with the current setup. Avoid the problem by moving the state to the
   # host.
   state = jax.tree.map(np.array, checkpointed_state['train_state'])
-  train_iter = checkpointed_state['train_iter']
+  if 'train_iter' in checkpoint_items:
+    train_iter = checkpointed_state['train_iter']
   initial_step = int(state.step) + 1
 
-  global_batch_size = config.per_device_batch_size * jax.device_count()
-  host_batch_size = config.per_device_batch_size * jax.local_device_count()
+  # Compute batch sizes based on chip count, not core count. Multi-core
+  # chips (e.g., tpu7x with 2 cores/chip) expose each core as a
+  # separate JAX device, which would accidentally double the batch size.
+  topo_info = accelerator_utils.get_accelerator_topology_info(
+      config.per_device_batch_size
+  )
+
+  logging.info(
+      'cores_per_chip=%d, num_chips=%d (global), local_chips=%d, '
+      'global_batch_size=%d, host_batch_size=%d',
+      topo_info.cores_per_chip,
+      topo_info.num_chips,
+      topo_info.local_chips,
+      topo_info.global_batch_size,
+      topo_info.host_batch_size,
+  )
 
   # Upper bound. The real number will be lower as not all steps are
   # taken for every example.
   steps_per_epoch = (
-      num_total_examples // global_batch_size * (len(fov_shifts) + 1)
+      num_total_examples // topo_info.global_batch_size * (len(fov_shifts) + 1)
   )
   num_train_steps = steps_per_epoch * config.num_epochs
   logging.info(
@@ -517,8 +590,9 @@ def train_and_evaluate(
       batch_sharding,  # logits
       replicate_sharding,  # loss scale
   )
-  p_train_step = jax.jit(train_fn, in_shardings=shard_in,
-                         out_shardings=shard_out)
+  p_train_step = jax.jit(
+      train_fn, in_shardings=shard_in, out_shardings=shard_out
+  )
 
   # Initialize summary writer.
   writer = metric_writers.create_default_writer(
@@ -534,7 +608,9 @@ def train_and_evaluate(
   logging.info('Starting training loop at step %d.', initial_step)
   hooks = []
   report_progress = training.ReportProgress(
-      global_batch_size, num_train_steps=num_train_steps, writer=writer
+      topo_info.global_batch_size,
+      num_train_steps=num_train_steps,
+      writer=writer,
   )
   if jax.process_index() == 0:
     hooks.append(report_progress)
@@ -543,13 +619,13 @@ def train_and_evaluate(
   eval_tracker = tracker.EvalTracker(eval_shape_zyx, fov_shifts)
 
   batch_iter = input_pipeline.get_batch_iter(
-      train_iter,
+      train_iter,  # pyrefly: ignore[bad-argument-type]
       eval_tracker,
       policy_fn,
       info,
       config,
       seed_shape=tuple(train_canvas_size(info, config).tolist()[::-1]),
-      batch_size=host_batch_size,
+      batch_size=topo_info.host_batch_size,
       jmp_policy=jmp_policy,
   )
 
@@ -564,9 +640,9 @@ def train_and_evaluate(
       per_device_data = np.split(x, len(mesh.local_devices), axis=0)
 
       on_dev = jax.device_put(per_device_data, mesh.local_devices)
-      global_shape = (
-          len(batch_sharding.device_set) * config.per_device_batch_size,
-      ) + per_device_data[0].shape[1:]
+      global_shape = (topo_info.global_batch_size,) + per_device_data[0].shape[
+          1:
+      ]
       return jax.make_array_from_single_device_arrays(
           global_shape, batch_sharding, on_dev
       )
@@ -613,16 +689,12 @@ def train_and_evaluate(
           )
 
         with training.MeasureTime(timings, 'update_seed'):
-          host_local_seeds = []  # [b, z, y, x, 1] * num_devices
-          dev_to_slice = batch_sharding.addressable_devices_indices_map(
-              updated_seed.shape
-          )
-
           # Ensure device order is the same as that used to build the
           # global array in postprocess_batch().
-          assert list(dev_to_slice.keys()) == list(mesh.local_devices)
-          for slc in dev_to_slice.values():
-            host_local_seeds.append(updated_seed[slc])
+          shard_by_device = {
+              s.device: s.data for s in updated_seed.addressable_shards
+          }
+          host_local_seeds = [shard_by_device[d] for d in mesh.local_devices]
 
           batch_iter.update_seeds(host_local_seeds)
 
@@ -631,7 +703,8 @@ def train_and_evaluate(
           logging.info('Saving checkpoint at %d.', step)
           train_state = jax.tree.map(np.array, state)
           checkpoint_manager.save(
-              step, args=_make_ckpt_args(train_state, train_iter)
+              step,
+              args=_make_ckpt_args(train_state, train_iter, checkpoint_items),  # pyrefly: ignore[bad-specialization]
           )
 
         if checkpoint_manager.reached_preemption(step):
@@ -667,7 +740,7 @@ def train_and_evaluate(
             assert tfw is not None
             # TODO(mjanusz): Find a cleaner and less brittle way of saving
             # raw summaries.
-            with tfw._summary_writer.as_default():
+            with tfw._summary_writer.as_default():  # pyrefly: ignore[missing-attribute]
               for s in raws:
                 tf.summary.experimental.write_raw_pb(s, step=step)
 

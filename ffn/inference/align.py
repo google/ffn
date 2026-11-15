@@ -109,10 +109,10 @@ class Alignment:
 
     zyx_offset = np.array(src_corner) - np.array(dst_corner)
     src_size = np.array(source.shape)
-    dst_beg = np.clip(zyx_offset, 0, dst_size).astype(np.int)
-    dst_end = np.clip(dst_size, 0, src_size + zyx_offset).astype(np.int)
-    src_beg = np.clip(-zyx_offset, 0, src_size).astype(np.int)
-    src_end = np.clip(src_size, 0, dst_size - zyx_offset).astype(np.int)
+    dst_beg = np.clip(zyx_offset, 0, dst_size).astype(np.int)  # pyrefly: ignore[missing-attribute]
+    dst_end = np.clip(dst_size, 0, src_size + zyx_offset).astype(np.int)  # pyrefly: ignore[missing-attribute]
+    src_beg = np.clip(-zyx_offset, 0, src_size).astype(np.int)  # pyrefly: ignore[missing-attribute]
+    src_end = np.clip(src_size, 0, dst_size - zyx_offset).astype(np.int)  # pyrefly: ignore[missing-attribute]
 
     if np.any(dst_end - dst_beg == 0) or np.any(src_end - src_beg == 0):
       return destination

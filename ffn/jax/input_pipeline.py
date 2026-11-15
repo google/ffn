@@ -21,12 +21,15 @@ import threading
 from typing import Any, Callable
 
 from absl import logging
+from connectomics.common import bounding_box
 from connectomics.common import utils
 from ffn.input import volume
+from ffn.jax import accelerator_utils
 from ffn.jax import tracker
 from ffn.training import examples
 from ffn.training import inputs
 from ffn.training import model as ffn_model
+from google.protobuf import text_format
 import jax
 import jmp
 import ml_collections
@@ -149,7 +152,10 @@ def load_examples(
         patches=(emt - config.image_mean) / config.image_stddev,
     )
 
-  batch_size = config.per_device_batch_size * jax.local_device_count()
+  topo_info = accelerator_utils.get_accelerator_topology_info(
+      config.per_device_batch_size
+  )
+  batch_size = topo_info.host_batch_size
 
   if cfg.sampling.vsi_coords:
     num_examples = getattr(config, 'train_num_coords', 100_000_000)
@@ -264,7 +270,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     self._fs_lock = threading.Lock()
     self._fs = set()
     for i, gen in enumerate(self._generators):
-      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))
+      self._fs.add(self._tpe.submit(lambda gen=gen, i=i: (i, next(gen))))  # pyrefly: ignore[bad-argument-type]
 
     # Prefetching of complete batches.
     self._batch_tpe = futures.ThreadPoolExecutor(max_workers=batch_prefetch)
@@ -335,7 +341,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         'weight': batched_weights,
     }
 
-  def update_seeds(self, batched_seeds: list[jax.Array]):
+  def update_seeds(self, batched_seeds: list[jax.Array]):  # pyrefly: ignore[bad-override]
     """Propagates data from `batched_seeds` back to the example generators."""
 
     def _update(
@@ -344,13 +350,13 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         current: list[int],
     ):
       # Transfer data from device to host.
-      batched_seeds = np.array(batched_seeds)
+      batched_seeds = np.array(batched_seeds)  # pyrefly: ignore[bad-assignment]
       # Fold batch dimensions back to a single one.
-      batched_seeds = np.reshape(
-          batched_seeds, [-1] + list(batched_seeds.shape[-4:])
+      batched_seeds = np.reshape(  # pyrefly: ignore[bad-assignment]
+          batched_seeds, [-1] + list(batched_seeds.shape[-4:])  # pyrefly: ignore[missing-attribute]
       )
 
-      assert batched_seeds.shape[0] == len(seeds)
+      assert batched_seeds.shape[0] == len(seeds)  # pyrefly: ignore[missing-attribute]
 
       dx = self._info.input_seed_size[0] - self._info.pred_mask_size[0]
       dy = self._info.input_seed_size[1] - self._info.pred_mask_size[1]
@@ -358,7 +364,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
 
       for i, _ in enumerate(current):
         if dz == 0 and dy == 0 and dx == 0:
-          seeds[i][:] = batched_seeds[i, ...]
+          seeds[i][:] = batched_seeds[i, ...]  # pyrefly: ignore[bad-index]
         else:
           seeds[i][
               :,  #
@@ -366,13 +372,13 @@ class MixingBatchExampleIter(BatchDictExampleIter):
               dy // 2 : -(dy - dy // 2),  #
               dx // 2 : -(dx - dx // 2),  #
               :,
-          ] = batched_seeds[i, ...]
+          ] = batched_seeds[i, ...]  # pyrefly: ignore[bad-index]
 
       with self._fs_lock:
         for gen_idx in current:
           gen = self._generators[gen_idx]
           self._fs.add(
-              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))
+              self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[bad-argument-type]
           )
 
     # Distribute data asynchronously.

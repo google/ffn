@@ -40,12 +40,8 @@ tf.compat.v1.disable_v2_behavior()
 
 from ..training import model as ffn_model
 from . import inference_utils
+from .errors import TerminationException
 from .inference_utils import timer_counter
-
-
-class TerminationException(Exception):  # pylint: disable=g-bad-exception-name
-  """Indicates that the program has been requested to shut down."""
-  pass
 
 
 class ExecutorInterface:
@@ -200,7 +196,7 @@ class BatchExecutor:
       logging.exception(e)
       # If the executor fails, the whole process becomes useless and we need
       # to make sure it gets terminated.
-      _thread.interrupt_main()  # pytype: disable=module-attr
+      _thread.interrupt_main()
       time.sleep(10)
       os._exit(1)  # pylint:disable=protected-access
 
@@ -228,7 +224,7 @@ class ThreadingBatchExecutor(BatchExecutor):
                counters: inference_utils.Counters,
                batch_size: int,
                expected_clients: int = 1):
-    super(ThreadingBatchExecutor, self).__init__(interface, model, model_info,
+    super(ThreadingBatchExecutor, self).__init__(interface, model, model_info,  # pyrefly: ignore[bad-argument-type]
                                                  session, counters, batch_size)
 
     # Total clients seen during the lifetime of the executor.
@@ -295,9 +291,14 @@ class ThreadingBatchExecutor(BatchExecutor):
               self.active_clients += 1
               logging.info('client %d starting', client_id)
             else:
-              self.registered_clients.remove(-client_id - 1)
-              logging.info('client %d terminating', -client_id - 1)
-              self.active_clients -= 1
+              try:
+                self.registered_clients.remove(-client_id - 1)
+                logging.info('client %d terminating', -client_id - 1)
+                self.active_clients -= 1
+              except KeyError:
+                logging.warning(
+                    'client %d not known or already terminated', -client_id - 1
+                )
           else:
             client_id, seed, image, fetches = data
             l = len(ready)
@@ -306,7 +307,7 @@ class ThreadingBatchExecutor(BatchExecutor):
             ready.append(client_id)
 
       if ready:
-        self._schedule_batch(ready, fetches)
+        self._schedule_batch(ready, fetches)  # pyrefly: ignore[unbound-name]
 
     logging.info('Executor terminating.')
 
@@ -325,7 +326,7 @@ class ThreadingBatchExecutor(BatchExecutor):
         logging.exception(e)
         # If calling TF didn't work (faulty hardware, misconfiguration, etc),
         # we want to terminate the whole program.
-        _thread.interrupt_main()  # pytype: disable=module-attr
+        _thread.interrupt_main()
         raise e
 
     with timer_counter(self.counters, 'executor-output'):
@@ -377,8 +378,9 @@ class JAXExecutor(ThreadingBatchExecutor):
         ret = self._apply_fn(data)
       except Exception as e:  # pylint:disable=broad-except
         logging.exception(e)
+        self._interface.exit_request.set()
         # Terminate the whole program on failure.
-        _thread.interrupt_main()  # pytype: disable=module-attr
+        _thread.interrupt_main()
         raise e
 
       ret = np.array(ret)

@@ -75,7 +75,7 @@ install the Google Cloud SDK and set it up with:
 You will also need to create a local copy of the labels and image with:
 
 ```shell
-  gsutil rsync -r -x ".*.gz" gs://ffn-flyem-fib25/ third_party/neuroproof_examples
+  gcloud storage rsync --recursive --exclude ".*.gz" gs://ffn-flyem-fib25/ third_party/neuroproof_examples
 ```
 
 ## Running training
