@@ -76,13 +76,17 @@ def reduce_id_bits(segmentation: np.ndarray):
     segmentation ndarray converted to minimal uint type large enough to keep
     all the IDs.
   """
+  if segmentation.dtype == np.uint8:
+    return segmentation
+  if segmentation.size == 0:
+    return segmentation.astype(np.uint8)
   max_id = segmentation.max()
   if max_id <= np.iinfo(np.uint8).max:
-    return segmentation.astype(np.uint8)
+    return segmentation.astype(np.uint8, copy=False)
   elif max_id <= np.iinfo(np.uint16).max:
-    return segmentation.astype(np.uint16)
+    return segmentation.astype(np.uint16, copy=False)
   elif max_id <= np.iinfo(np.uint32).max:
-    return segmentation.astype(np.uint32)
+    return segmentation.astype(np.uint32, copy=False)
   return segmentation
 
 
@@ -164,16 +168,43 @@ def clean_up_and_count(seg: np.ndarray,
   cc_to_orig, cc_to_count = None, None
 
   if compute_id_map or compute_counts:
-    unique_result_tuple = np.unique(  # pyrefly: ignore[no-matching-overload]
-        seg.ravel(), return_index=compute_id_map, return_counts=compute_counts)
-    cc_ids = unique_result_tuple[0]
-  if compute_id_map:
-    cc_idx = unique_result_tuple[1]  # pyrefly: ignore[unbound-name]
-    orig_ids = seg_orig.ravel()[cc_idx]  # pyrefly: ignore[unbound-name]
-    cc_to_orig = dict(zip(cc_ids, orig_ids))  # pyrefly: ignore[unbound-name]
-  if compute_counts:
-    cc_counts = unique_result_tuple[-1]
-    cc_to_count = dict(zip(cc_ids, cc_counts))
+    is_integer = np.issubdtype(seg.dtype, np.integer)
+    min_id = int(seg.min()) if np.issubdtype(seg.dtype, np.signedinteger) else 0
+    max_id = int(seg.max()) if is_integer and min_id >= 0 else 10_000_000
+    if is_integer and min_id >= 0 and max_id < 10_000_000:
+      flat = seg.ravel()
+      flat_int = (
+          flat.view(np.int64)
+          if flat.dtype == np.uint64 and np.dtype(np.intp) == np.int64
+          else flat
+      )
+      counts = np.bincount(flat_int)
+      cc_ids = np.nonzero(counts)[0].astype(seg.dtype)
+      if compute_id_map:
+        orig_flat = seg_orig.ravel()  # pyrefly: ignore[unbound-name]
+        lut = np.zeros(max_id + 1, dtype=seg_orig.dtype)  # pyrefly: ignore[unbound-name]
+        lut[flat_int] = orig_flat
+        # lut[flat_int] = orig_flat keeps the last occurrence; restore the
+        # first occurrence of 0 (which may combine background and cleared dust)
+        # to match np.unique(..., return_index=True).
+        if cc_ids.size > 0 and cc_ids[0] == 0:
+          first_zero = 0 if flat_int[0] == 0 else int(np.argmax(flat_int == 0))
+          lut[0] = orig_flat[first_zero]
+        cc_to_orig = dict(zip(cc_ids, lut[cc_ids]))
+      if compute_counts:
+        cc_to_count = dict(zip(cc_ids, counts[cc_ids]))
+    else:
+      unique_result_tuple = np.unique(  # pyrefly: ignore[no-matching-overload]
+          seg.ravel(), return_index=compute_id_map, return_counts=compute_counts
+      )
+      cc_ids = unique_result_tuple[0]
+      if compute_id_map:
+        cc_idx = unique_result_tuple[1]
+        orig_ids = seg_orig.ravel()[cc_idx]  # pyrefly: ignore[unbound-name]
+        cc_to_orig = dict(zip(cc_ids, orig_ids))
+      if compute_counts:
+        cc_counts = unique_result_tuple[-1]
+        cc_to_count = dict(zip(cc_ids, cc_counts))
 
   return cc_to_orig, cc_to_count
 
