@@ -230,7 +230,11 @@ def train_step(
       new_ema_params = new_params
     else:
       decay = jnp.array(ema_decay, dtype=jnp.float32)
-      decay = jnp.where(state.step == 0, 0.0, decay)
+      if not (
+          config.get('init_from_cpoint', '')
+          and config.get('reset_train_state', False)
+      ):
+        decay = jnp.where(state.step == 0, 0.0, decay)
       new_ema_params = optax.incremental_update(
           new_params, new_ema_params, step_size=1.0 - decay
       )
@@ -371,6 +375,61 @@ def _make_ckpt_args(
   return ocp.args.Composite(**args)
 
 
+def _restore_initial_state(
+    init_from_cpoint: str,
+    state: TrainState,
+    optimizer: optax.GradientTransformation,
+    config: ml_collections.ConfigDict,
+    reset_train_state: bool,
+) -> TrainState:
+  """Restores `TrainState` (or weights when resetting state) from a checkpoint."""
+  init_path = epath.Path(init_from_cpoint)
+  train_state_path = init_path / 'train_state'
+  target_path = train_state_path if train_state_path.exists() else init_path
+  handler = ocp.StandardCheckpointHandler()
+  if not reset_train_state:
+    return handler.restore(target_path, args=ocp.args.StandardRestore(state))
+
+  raw_state = handler.restore(target_path)
+  raw_params = (
+      raw_state['params']
+      if 'params' in raw_state
+      else raw_state['optimizer']['target']
+  )
+  params = flax.serialization.from_state_dict(state.params, raw_params)
+  for new_leaf, tmpl_leaf in zip(
+      jax.tree.leaves(params), jax.tree.leaves(state.params)
+  ):
+    if np.shape(new_leaf) != np.shape(tmpl_leaf):
+      raise ValueError(
+          f'Restored parameter shape {np.shape(new_leaf)} does not match '
+          f'model shape {np.shape(tmpl_leaf)} for {init_from_cpoint!r}.'
+      )
+
+  batch_stats = state.batch_stats
+  if batch_stats is not None and raw_state.get('batch_stats') is not None:
+    batch_stats = flax.serialization.from_state_dict(
+        batch_stats, raw_state['batch_stats']
+    )
+
+  ema_params = None
+  if config.get('ema_decay', 0.0) > 0.0:
+    raw_ema = raw_state.get('ema_params')
+    ema_params = (
+        flax.serialization.from_state_dict(state.params, raw_ema)
+        if raw_ema is not None
+        else params
+    )
+
+  return state.replace(
+      step=0,
+      params=params,
+      opt_state=optimizer.init(params),
+      batch_stats=batch_stats,
+      ema_params=ema_params,
+  )
+
+
 def train_and_evaluate(
     config: ml_collections.ConfigDict,
     workdir: str,
@@ -476,15 +535,21 @@ def train_and_evaluate(
   # Otherwise an existing experiment is being resumed (e.g. after the training
   # task being preempted) and the latest checkpoint should take precedence.
   if config.init_from_cpoint and latest_step is None:
-    handler = ocp.StandardCheckpointHandler()
-    train_state_path = epath.Path(config.init_from_cpoint) / 'train_state'
-
-    checkpointed_state['train_state'] = handler.restore(
-        train_state_path, args=ocp.args.StandardRestore(state)
+    reset_state = bool(config.get('reset_train_state', False))
+    checkpointed_state['train_state'] = _restore_initial_state(
+        config.init_from_cpoint,
+        state,
+        optimizer,
+        config,
+        reset_train_state=reset_state,
     )
 
-    if 'train_iter' in checkpoint_items:
-      train_iter_path = epath.Path(config.init_from_cpoint) / 'train_iter'
+    train_iter_path = epath.Path(config.init_from_cpoint) / 'train_iter'
+    if (
+        'train_iter' in checkpoint_items
+        and not reset_state
+        and train_iter_path.exists()
+    ):
       if isinstance(train_iter, tf.data.Iterator):
         iter_handler = item_handlers['train_iter']
         args = DatasetArgs(train_iter)
@@ -492,7 +557,11 @@ def train_and_evaluate(
           train_iter_path, args=args  # pyrefly: ignore[bad-argument-type]
       )
 
-    logging.info('Initializing training from %r', config.init_from_cpoint)
+    logging.info(
+        'Initializing training from %r (reset_train_state=%s)',
+        config.init_from_cpoint,
+        reset_state,
+    )
   elif latest_step is not None:
     restore_args = {
         'train_state': ocp.args.StandardRestore(state),
