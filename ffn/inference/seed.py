@@ -142,6 +142,20 @@ def _find_peaks(distances, **kwargs):
 _PEAKS_SEM = threading.Semaphore(4)
 
 
+def _normalize_sort_cmp(sort_cmp: str) -> str:
+  mode = sort_cmp.strip().lower()
+  if mode in ('ascending', 'asc'):
+    return 'ascending'
+  if mode in ('descending', 'desc'):
+    return 'descending'
+  if mode in ('distance', 'dist'):
+    return 'distance'
+  raise ValueError(
+      f'Unsupported sort_cmp={sort_cmp!r}; expected one of '
+      "'ascending', 'descending', or 'distance'."
+  )
+
+
 class PolicyPeaks(BaseSeedPolicy):
   """Attempts to find points away from edges in the image.
 
@@ -152,6 +166,17 @@ class PolicyPeaks(BaseSeedPolicy):
   # Limit the number of concurrent threads computing the local maxima. This
   # operation causes temporary increase in memory usage.
   _sem = _PEAKS_SEM
+
+  def __init__(self, canvas: Any, sort_cmp: str = 'ascending', **kwargs: Any):
+    """Initializes PolicyPeaks.
+
+    Args:
+      canvas: Inference Canvas object.
+      sort_cmp: Seed ordering ('ascending', 'descending', or 'distance').
+      **kwargs: Forwarded to BaseSeedPolicy.
+    """
+    super().__init__(canvas, **kwargs)
+    self._sort_cmp = _normalize_sort_cmp(sort_cmp)
 
   def init_coords(self):
     logging.info('peaks: starting')
@@ -194,9 +219,26 @@ class PolicyPeaks(BaseSeedPolicy):
       idxs = _find_peaks(dt, min_distance=3, threshold_abs=0, threshold_rel=0)
 
       # After skimage upgrade to 0.13.0 peak_local_max returns peaks in
-      # descending order, versus ascending order previously.  Sort ascending to
-      # maintain historic behavior.
-      idxs = np.array(sorted((z, y, x) for z, y, x in idxs))
+      # descending order, versus ascending order previously. Sort ascending by
+      # default to maintain historic behavior, or apply requested sort_cmp.
+      if idxs.shape[0] == 0:
+        idxs = np.array([])
+      elif self._sort_cmp == 'distance':
+        idxs = np.asarray(
+            sorted(
+                ((int(z), int(y), int(x)) for z, y, x in idxs),
+                key=lambda c: (-float(dt[c]), c),
+            ),
+            dtype=np.int64,
+        )
+      else:
+        idxs = np.asarray(
+            sorted(
+                ((int(z), int(y), int(x)) for z, y, x in idxs),
+                reverse=(self._sort_cmp == 'descending'),
+            ),
+            dtype=np.int64,
+        )
 
       logging.info('peaks: found %d local maxima', idxs.shape[0])
       self.coords = idxs
@@ -281,20 +323,6 @@ class PolicyPeaks2d(BaseSeedPolicy):
                reverse=self.sort_reverse))
 
     logging.info('2d peaks: found %d total local maxima', self.coords.shape[0])
-
-
-def _normalize_sort_cmp(sort_cmp: str) -> str:
-  mode = sort_cmp.strip().lower()
-  if mode in ('ascending', 'asc'):
-    return 'ascending'
-  if mode in ('descending', 'desc'):
-    return 'descending'
-  if mode in ('distance', 'dist'):
-    return 'distance'
-  raise ValueError(
-      f'Unsupported sort_cmp={sort_cmp!r}; expected one of '
-      "'ascending', 'descending', or 'distance'."
-  )
 
 
 def find_empty_space_peaks(
