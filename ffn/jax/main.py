@@ -33,6 +33,12 @@ def main(argv: Sequence[str]) -> None:
   if len(argv) > 1:
     raise app.UsageError('Too many command-line arguments.')
 
+  # Disable space-to-batch XLA transform which can crash on VLP small 3D FoVs.
+  if 'xla_tpu_run_space_to_batch' in flags.FLAGS:
+    flags.FLAGS.xla_tpu_run_space_to_batch = False
+  if 'xla_tpu_run_space_to_batch_on_new_platforms' in flags.FLAGS:
+    flags.FLAGS.xla_tpu_run_space_to_batch_on_new_platforms = False
+
   training.prep_training()
   train.train_and_evaluate(FLAGS.config, FLAGS.workdir, FLAGS.service_address)
 

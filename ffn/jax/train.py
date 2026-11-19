@@ -15,6 +15,7 @@
 """Training script for FFN models."""
 
 import collections
+import contextlib
 import functools as ft
 import os
 import random
@@ -247,7 +248,7 @@ def train_step(
       ema_params=new_ema_params,
   )
 
-  lr = schedule(state.opt_state.count)  # pyrefly: ignore[missing-attribute]
+  lr = schedule(state.step)
   metrics_update = TrainMetrics.single_from_model_output(
       loss=loss, learning_rate=lr
   )
@@ -375,48 +376,56 @@ def _make_ckpt_args(
   return ocp.args.Composite(**args)
 
 
-def _restore_initial_state(
-    init_from_cpoint: str,
+def _restore_tree_with_shapes(
+    template: Any, raw_tree: Any, ckpt_path: epath.PathLike
+) -> Any:
+  """Restores `raw_tree` into `template` structure and validates leaf shapes."""
+  restored = flax.serialization.from_state_dict(template, raw_tree)
+  for new_leaf, tmpl_leaf in zip(
+      jax.tree.leaves(restored), jax.tree.leaves(template), strict=True
+  ):
+    if np.shape(new_leaf) != np.shape(tmpl_leaf):
+      raise ValueError(
+          f'Restored parameter shape {np.shape(new_leaf)} does not match '
+          f'model shape {np.shape(tmpl_leaf)} for {ckpt_path!r}.'
+      )
+  return restored
+
+
+def restore_train_state_for_finetune(
+    init_from_cpoint: epath.PathLike,
     state: TrainState,
     optimizer: optax.GradientTransformation,
     config: ml_collections.ConfigDict,
-    reset_train_state: bool,
 ) -> TrainState:
-  """Restores `TrainState` (or weights when resetting state) from a checkpoint."""
+  """Restores model weights while resetting step and optimizer state."""
   init_path = epath.Path(init_from_cpoint)
   train_state_path = init_path / 'train_state'
   target_path = train_state_path if train_state_path.exists() else init_path
   handler = ocp.StandardCheckpointHandler()
-  if not reset_train_state:
-    return handler.restore(target_path, args=ocp.args.StandardRestore(state))
+  try:
+    raw_state = handler.restore(target_path)
+  finally:
+    handler.close()
 
-  raw_state = handler.restore(target_path)
   raw_params = (
       raw_state['params']
       if 'params' in raw_state
       else raw_state['optimizer']['target']
   )
-  params = flax.serialization.from_state_dict(state.params, raw_params)
-  for new_leaf, tmpl_leaf in zip(
-      jax.tree.leaves(params), jax.tree.leaves(state.params)
-  ):
-    if np.shape(new_leaf) != np.shape(tmpl_leaf):
-      raise ValueError(
-          f'Restored parameter shape {np.shape(new_leaf)} does not match '
-          f'model shape {np.shape(tmpl_leaf)} for {init_from_cpoint!r}.'
-      )
+  params = _restore_tree_with_shapes(state.params, raw_params, init_from_cpoint)
 
   batch_stats = state.batch_stats
   if batch_stats is not None and raw_state.get('batch_stats') is not None:
-    batch_stats = flax.serialization.from_state_dict(
-        batch_stats, raw_state['batch_stats']
+    batch_stats = _restore_tree_with_shapes(
+        batch_stats, raw_state['batch_stats'], init_from_cpoint
     )
 
   ema_params = None
   if config.get('ema_decay', 0.0) > 0.0:
     raw_ema = raw_state.get('ema_params')
     ema_params = (
-        flax.serialization.from_state_dict(state.params, raw_ema)
+        _restore_tree_with_shapes(state.params, raw_ema, init_from_cpoint)
         if raw_ema is not None
         else params
     )
@@ -428,6 +437,28 @@ def _restore_initial_state(
       batch_stats=batch_stats,
       ema_params=ema_params,
   )
+
+
+def _restore_initial_state(
+    init_from_cpoint: epath.PathLike,
+    state: TrainState,
+    optimizer: optax.GradientTransformation,
+    config: ml_collections.ConfigDict,
+    reset_train_state: bool,
+) -> TrainState:
+  """Restores `TrainState` (or weights when resetting state) from a checkpoint."""
+  if reset_train_state:
+    return restore_train_state_for_finetune(
+        init_from_cpoint, state, optimizer, config
+    )
+  init_path = epath.Path(init_from_cpoint)
+  train_state_path = init_path / 'train_state'
+  target_path = train_state_path if train_state_path.exists() else init_path
+  handler = ocp.StandardCheckpointHandler()
+  try:
+    return handler.restore(target_path, args=ocp.args.StandardRestore(state))
+  finally:
+    handler.close()
 
 
 def train_and_evaluate(
@@ -614,6 +645,8 @@ def train_and_evaluate(
       num_total_examples // topo_info.global_batch_size * (len(fov_shifts) + 1)
   )
   num_train_steps = steps_per_epoch * config.num_epochs
+  if config.get('num_train_steps', -1) > 0:
+    num_train_steps = config.num_train_steps
   logging.info(
       'num_train_steps=%d, steps_per_epoch=%d', num_train_steps, steps_per_epoch
   )
@@ -726,7 +759,12 @@ def train_and_evaluate(
         },
     )
 
-  with metric_writers.ensure_flushes(writer):
+  step = initial_step - 1
+  with (
+      contextlib.closing(checkpoint_manager),
+      contextlib.closing(batch_iter),
+      metric_writers.ensure_flushes(writer),
+  ):
     # Record a summary scalar to indicate the specific steps at which
     # training restarts occurred.
     writer.write_scalars(initial_step, {'start': 1})
@@ -818,8 +856,9 @@ def train_and_evaluate(
           train_metrics = None
           eval_tracker.reset()
 
-  checkpoint_manager.wait_until_finished()
+    checkpoint_manager.wait_until_finished()
   logging.info('Finished training at step %d.', step)
+  logging.flush()
 
   if shutdown_request:
     # Allow time for other workers to finish checkpoint saving. Soon after

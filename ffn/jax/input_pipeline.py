@@ -15,6 +15,7 @@
 
 """Input pipeline for FFN models."""
 
+from collections import abc
 from concurrent import futures
 import functools
 import threading
@@ -44,6 +45,8 @@ Dataset = tf.data.Dataset
 
 
 def _check_thread_success(future: futures.Future[Any], err_msg: str = ''):
+  if future.cancelled():
+    return
   e = future.exception()
 
   if e is None:
@@ -216,6 +219,11 @@ class BatchDictExampleIter(examples.BatchExampleIter):
     seeds, patches, labels, weights = super().__next__()
     return {'seed': seeds, 'label': labels, 'patch': patches, 'weight': weights}
 
+  def close(self) -> None:
+    """Releases any background resources held by the iterator."""
+    if isinstance(self._batch_generator, abc.Generator):
+      self._batch_generator.close()
+
 
 class MixingBatchExampleIter(BatchDictExampleIter):
   """Like BatchDictExampleIter but with more examples in parallel.
@@ -259,6 +267,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     self._batch_size = batch_size
     self._info = model_info
     self._jmp_policy = jmp_policy
+    self._closed = threading.Event()
 
     # Loading of individual training examples.
     self._generators = [
@@ -284,19 +293,30 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     """Returns a batch of training examples."""
     seeds, patches, labels, weights, batch_ids = [], [], [], [], []
 
-    while len(batch_ids) < self._batch_size:
+    while not self._closed.is_set() and len(batch_ids) < self._batch_size:
       with self._fs_lock:
-        for f in futures.as_completed(self._fs):
-          self._fs.remove(f)
-          i, (seed, patch, label, weight) = f.result()
-          seeds.append(seed)
-          patches.append(patch)
-          labels.append(label)
-          weights.append(weight)
-          batch_ids.append(i)
+        if self._closed.is_set():
+          return None
+        try:
+          for f in futures.as_completed(self._fs, timeout=0.1):
+            self._fs.remove(f)
+            if self._closed.is_set() or f.cancelled():
+              return None
+            i, (seed, patch, label, weight) = f.result()
+            seeds.append(seed)
+            patches.append(patch)
+            labels.append(label)
+            weights.append(weight)
+            batch_ids.append(i)
 
-          if len(batch_ids) == self._batch_size:
-            break
+            if len(batch_ids) == self._batch_size:
+              break
+        except futures.TimeoutError:
+          pass
+      if len(batch_ids) < self._batch_size and not self._closed.is_set():
+        self._closed.wait(0.001)
+    if self._closed.is_set():
+      return None
 
     batched_seeds = np.concatenate(seeds)
     batched_weights = np.concatenate(weights)
@@ -317,13 +337,25 @@ class MixingBatchExampleIter(BatchDictExampleIter):
     )
 
   def __next__(self):
+    if self._closed.is_set():
+      raise StopIteration
     # The time reported here indicates how long the training script had to
     # wait to get a new batch of examples. It should ideally be ~0.
     with utils.report_time('MixingBatchExampleIter'):
       f = next(futures.as_completed(self._batch_fs))
 
     self._batch_fs.remove(f)
-    self._batch_fs.add(self._batch_tpe.submit(self._generate_batch))
+    if f.cancelled() or self._closed.is_set():
+      raise StopIteration
+    res = f.result()
+    if res is None:
+      raise StopIteration
+    if not self._closed.is_set():
+      try:
+        self._batch_fs.add(self._batch_tpe.submit(self._generate_batch))
+      except RuntimeError:
+        if not self._closed.is_set():
+          raise
 
     (
         self._current_idx,
@@ -332,7 +364,7 @@ class MixingBatchExampleIter(BatchDictExampleIter):
         batched_weights,
         batched_labels,
         batched_patches,
-    ) = f.result()
+    ) = res
     self._eval_tracker.track_weights(batched_weights)
     return {
         'seed': batched_seeds,
@@ -375,21 +407,41 @@ class MixingBatchExampleIter(BatchDictExampleIter):
           ] = batched_seeds[i, ...]  # pyrefly: ignore[bad-index]
 
       with self._fs_lock:
+        if self._closed.is_set():
+          return
         for gen_idx in current:
           gen = self._generators[gen_idx]
           self._fs.add(
               self._tpe.submit(lambda gen=gen, i=gen_idx: (i, next(gen)))  # pyrefly: ignore[bad-argument-type]
           )
 
+    if self._closed.is_set():
+      return
     # Distribute data asynchronously.
-    update_future = self._seed_update_tpe.submit(
-        _update, self._seeds, batched_seeds, self._current_idx
-    )
+    try:
+      update_future = self._seed_update_tpe.submit(
+          _update, self._seeds, batched_seeds, self._current_idx
+      )
+    except RuntimeError:
+      if self._closed.is_set():
+        return
+      raise
     update_future.add_done_callback(
         functools.partial(
             _check_thread_success, err_msg='Error while updating seeds.'
         )
     )
+
+  def close(self) -> None:
+    """Shuts down background prefetch and seed-update thread pools."""
+    if self._closed.is_set():
+      return
+    self._closed.set()
+    self._seed_update_tpe.shutdown(wait=False, cancel_futures=True)
+    with self._fs_lock:
+      self._tpe.shutdown(wait=False, cancel_futures=True)
+      self._fs.clear()
+    self._batch_tpe.shutdown(wait=False, cancel_futures=True)
 
 
 class UnbatchIter:
