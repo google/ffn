@@ -280,7 +280,7 @@ def sample_coordinates(
       'coord': [1, 3] XYZ int64 array
       'volname': [1] string array
   """
-    if config.sampling.bounding_boxes:
+  if config.sampling.bounding_boxes:
     boxes_cfg = []
     volume_names = []
     # Compile boxes and volumes strings.

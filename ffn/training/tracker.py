@@ -232,11 +232,7 @@ class EvalTracker:
 
       text += f'\n{volume_name}'
 
-    try:
-
-      # font = PIL.ImageFont.load_default()
-    except (IOError, ValueError):
-      font = PIL.ImageFont.load_default()
+    font = PIL.ImageFont.load_default()
 
     draw.text((1, 1), text, fill='rgb(255,64,64)', font=font)
     del draw
