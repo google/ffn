@@ -62,7 +62,7 @@ class StatCounter:
       self._update()
 
     if self._parent is not None:
-      self._parent.IncrementBy(x)
+      self._parent.IncrementBy(x, export=export)
 
   def Set(self, x, export=True):
     """Sets the counter value to 'x'.

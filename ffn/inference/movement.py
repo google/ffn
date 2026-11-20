@@ -101,32 +101,42 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
     self.done_rounded_coords = set()
     self.score_threshold = score_threshold
     self._start_pos = None
+    self._in_flight = None
     super(FaceMaxMovementPolicy, self).__init__(canvas, deque([]), deltas)
 
   def reset_state(self, start_pos):
     self.scored_coords = deque([])
     self.done_rounded_coords = set()
     self._start_pos = start_pos
+    self._in_flight = None
 
   def get_state(self):
-    return [(self.scored_coords, self.done_rounded_coords, self._start_pos)]
+    scored_coords = deque(self.scored_coords)
+    if self._in_flight is not None:
+      scored_coords.appendleft(self._in_flight)
+    return [(scored_coords, set(self.done_rounded_coords), self._start_pos)]
 
   def restore_state(self, state):
-    self.scored_coords, self.done_rounded_coords, self._start_pos = state[0]
+    scored_coords, done_rounded_coords, start_pos = state[0]
+    self.scored_coords = deque(scored_coords)
+    self.done_rounded_coords = set(done_rounded_coords)
+    self._start_pos = (
+        tuple(int(x) for x in start_pos) if start_pos is not None else None
+    )
+    self._in_flight = None
 
   def __next__(self):
     """Pops positions from queue until a valid one is found and returns it."""
+    self._in_flight = None
     while self.scored_coords:
-      _, coord = self.scored_coords.popleft()
+      score, coord = self.scored_coords.popleft()
       coord = tuple(coord)
       if self.quantize_pos(coord) in self.done_rounded_coords:
         continue
       if self.canvas.is_valid_pos(coord):
-        break
-    else:  # Else goes with while, not with if!
-      raise StopIteration()
-
-    return tuple(coord)
+        self._in_flight = (score, coord)
+        return coord
+    raise StopIteration()
 
   def quantize_pos(self, pos):
     """Quantizes the positions symmetrically to a grid downsampled by deltas."""
@@ -140,6 +150,7 @@ class FaceMaxMovementPolicy(BaseMovementPolicy):
 
   def update(self, prob_map, position):
     """Adds movements to queue for the cuboid face maxima of ``prob_map``."""
+    self._in_flight = None
     qpos = self.quantize_pos(position)
     self.done_rounded_coords.add(qpos)
 

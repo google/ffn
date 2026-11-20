@@ -18,7 +18,6 @@ Seed policies are iterable objects yielding (z, y, x) tuples identifying
 points at which the FFN will attempt to create a segment.
 """
 
-import itertools
 import threading
 from typing import Any, Sequence
 import weakref
@@ -110,7 +109,8 @@ class BaseSeedPolicy:
       return self.coords, self.idx
 
   def set_state(self, state):
-    self.coords, self.idx = state
+    self.coords, idx = state
+    self.idx = int(idx)
 
   # This is done as an optimization to avoid generating seeds that are
   # immediately going to be rejected. Keep this in sync with
@@ -635,12 +635,18 @@ class SequentialPolicies(BaseSeedPolicy):
     del kwargs
     super().__init__(canvas)
     self._policies = []
+    self._policy_idx = 0
     for seed_policy, seed_policy_kwargs in policies:
       policy_cls = globals()[seed_policy]
       self._policies.append(policy_cls(canvas, **seed_policy_kwargs))
 
-  def init_coords(self):
-    self.coords = np.array(list(itertools.chain(*self._policies)))
+  def __next__(self):
+    while self._policy_idx < len(self._policies):
+      try:
+        return next(self._policies[self._policy_idx])
+      except StopIteration:
+        self._policy_idx += 1
+    raise StopIteration()
 
   def get_state(self, previous=False):
     """Returns a pickleable state for this seeding policy.
@@ -649,11 +655,20 @@ class SequentialPolicies(BaseSeedPolicy):
       previous: if True, indicates that a state for the already consumed seed,
         and so an in-progress segment, is being requested
     """
-    states = []
-    for policy in self._policies:
-      states.append(policy.get_state(previous=previous))
-    return states
+    states = [
+        policy.get_state(previous=(previous and i == self._policy_idx))
+        for i, policy in enumerate(self._policies)
+    ]
+    return self._policy_idx, states
 
   def set_state(self, state):
-    for s, policy in zip(state, self._policies):
+    if isinstance(state, tuple) and len(state) == 2 and isinstance(
+        state[0], (int, np.integer)
+    ):
+      policy_idx, states = state
+      self._policy_idx = int(policy_idx)
+    else:
+      self._policy_idx = 0
+      states = state
+    for s, policy in zip(states, self._policies):
       policy.set_state(s)

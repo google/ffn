@@ -68,6 +68,12 @@ class ExecutorInterface:
 
     return self._input_queue.put(x)
 
+  def put_exit(self) -> None:
+    self._input_queue.put('exit')
+
+  def is_shutting_down(self) -> bool:
+    return self.exit_request.is_set()
+
   def queue_get(self, **kwargs):
     return self._input_queue.get(**kwargs)
 
@@ -103,6 +109,9 @@ class ExecutorClient:
     """Deregisters the client."""
     raise NotImplementedError()
 
+  def is_shutting_down(self) -> bool:
+    return self._interface.is_shutting_down()
+
   def predict(self, seed: np.ndarray, image: np.ndarray,
               fetches: Sequence[str]) -> dict[str, np.ndarray]:
     raise NotImplementedError()
@@ -127,9 +136,15 @@ class ThreadingExecutorClient(ExecutorClient):
   def finish(self):
     if self._client_id is None:
       return
+    client_id = self._client_id
+    self._client_id = None
     with self._interface.lock:
-      del self._interface.outputs[self._client_id]
-    self._interface.queue_put(-1 - self._client_id)
+      self._interface.outputs.pop(client_id, None)
+    try:
+      self._interface.queue_put(-1 - client_id)
+    except TerminationException:
+      # Executor is already shutting down; client output queue was removed.
+      pass
 
   def predict(self, seed: np.ndarray, image: np.ndarray,
               fetches: Sequence[str]) -> dict[str, np.ndarray]:
@@ -257,8 +272,8 @@ class ThreadingBatchExecutor(BatchExecutor):
     if self.th_executor is None:
       return
     logging.info('Requesting executor shutdown.')
-    self._interface.queue_put('exit')
     self._interface.exit_request.set()
+    self._interface.put_exit()
     self.th_executor.join()
     self.th_executor = None
     logging.info('Executor shutdown complete.')

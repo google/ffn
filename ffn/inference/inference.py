@@ -125,6 +125,22 @@ def visualize_state(seed_logits, pos: Tuple3i, movement_policy, dynimage):
   dynimage.UpdateFromPIL(vis)
 
 
+def _as_object_array(value):
+  arr = np.empty((), dtype=object)
+  arr[()] = value
+  return arr
+
+
+def _unwrap_object_array(value):
+  if (
+      isinstance(value, np.ndarray)
+      and value.dtype == object
+      and value.ndim == 0
+  ):
+    return value.item()
+  return value
+
+
 # TODO(mjanusz): Add support for sparse inference.
 class Canvas:
   """Tracks state of the inference progress and results within a subvolume."""
@@ -132,7 +148,7 @@ class Canvas:
   # Saving compressed NPZ files involves temporary files in the local
   # filesystem. In order to avoid running out of disk/RAM, we serialize
   # these operations.
-  io_lock = threading.Lock()
+  io_lock = threading.RLock()
 
   def __init__(
       self,
@@ -278,6 +294,22 @@ class Canvas:
       logging.info('Deregistering client %d', self._exec_client_id)
       self._exec_client.finish()
       self._exec_client_id = None
+
+  def _is_shutting_down(self) -> bool:
+    return (
+        isinstance(self._exec_client, executor.ExecutorClient)
+        and self._exec_client.is_shutting_down()
+    )
+
+  def _on_sigterm_checkpoint(
+      self, partial_segment_iters: int, in_progress_seed: bool
+  ) -> None:
+    if self.checkpoint_path:
+      self.save_checkpoint(
+          self.checkpoint_path,
+          partial_segment_iters,
+          in_progress_seed=in_progress_seed,
+      )
 
   def __del__(self):
     # Note that the presence of this method will cause a memory leak in
@@ -508,7 +540,11 @@ class Canvas:
           self.counters['skip_restriced_pos'].Increment()
           continue
 
-        pred = self.update_at(pos)
+        try:
+          pred = self.update_at(pos)
+        except executor.TerminationException:
+          self._on_sigterm_checkpoint(num_iters, in_progress_seed=True)
+          raise
         self._min_pos = np.minimum(self._min_pos, pos)
         self._max_pos = np.maximum(self._max_pos, pos)
         num_iters += 1
@@ -557,6 +593,12 @@ class Canvas:
       mbd = np.array([mbd.z, mbd.y, mbd.x])
 
       for pos in TimedIter(self.seed_policy, self.counters, 'seed-policy'):
+        if self._is_shutting_down():
+          self._on_sigterm_checkpoint(
+              partial_segment_iters, in_progress_seed=True
+          )
+          raise executor.TerminationException()
+
         # When starting a new segment the move_threshold on the probability
         # should be ignored when determining if the position is valid.
         if not (
@@ -568,7 +610,9 @@ class Canvas:
           continue
 
         if not partial_segment_iters:
-          self._maybe_save_checkpoint(partial_segment_iters=0)
+          self._maybe_save_checkpoint(
+              partial_segment_iters=0, in_progress_seed=True
+          )
 
         # Too close to an existing segment?
         low = np.array(pos) - mbd
@@ -754,20 +798,24 @@ class Canvas:
       segmented_voxels = np.sum(self.segmentation != 0)
       self.counters['voxels-segmented'].Set(segmented_voxels)
       self._max_id = int(np.max(self.segmentation))
+      if 'max_id' in data:
+        self._max_id = max(self._max_id, int(data['max_id']))
       self._min_pos = data['min_pos']
       self._max_pos = data['max_pos']
 
-      self.movement_policy.restore_state(data['movement_policy'])
+      self.movement_policy.restore_state(
+          _unwrap_object_array(data['movement_policy'])
+      )
 
       # When restoring the state of a previously unused Canvas, the seed
       # policy will not be defined. We just save the seed policy state here
       # for future use in .segment_all().
-      self._seed_policy_state = data['seed_policy_state']
+      self._seed_policy_state = _unwrap_object_array(data['seed_policy_state'])
 
       self.counters.loads(data['counters'].item())
 
       if 'partial_segment_iters' in data:
-        partial_segment_iters = data['partial_segment_iters']
+        partial_segment_iters = int(data['partial_segment_iters'])
       else:
         partial_segment_iters = 0
 
@@ -777,50 +825,69 @@ class Canvas:
     self.log_info('Inference checkpoint restored.')
     return partial_segment_iters
 
-  def save_checkpoint(self, path: str, partial_segment_iters: int):
+  def save_checkpoint(
+      self,
+      path: str | None,
+      partial_segment_iters: int,
+      in_progress_seed: bool | None = None,
+  ):
     """Saves an inference checkpoint to `path`.
 
     Args:
       path: path at which the checkpoint should be saved
       partial_segment_iters: if this checkpoint is for an in-flight segment,
         number of inference iterations already executed; 0 otherwise
+      in_progress_seed: whether the current seed from `seed_policy` has already
+        been consumed for an unfinished segment; defaults to
+        `partial_segment_iters > 0` when omitted.
     """
+    if not path:
+      return
+    if in_progress_seed is None:
+      in_progress_seed = partial_segment_iters > 0
+
     self.log_info('Saving inference checkpoint to %s.', path)
-    with timer_counter(self.counters, 'save_checkpoint'):
-      gfile.makedirs(os.path.dirname(path))
-      with storage.atomic_file(path) as fd:
-        seed_policy_state = None
-        if self.seed_policy is not None:
-          seed_policy_state = self.seed_policy.get_state(
-              partial_segment_iters > 0
+    with Canvas.io_lock:
+      with timer_counter(self.counters, 'save_checkpoint'):
+        gfile.makedirs(os.path.dirname(path))
+        with storage.atomic_file(path) as fd:
+          seed_policy_state = None
+          if self.seed_policy is not None:
+            seed_policy_state = self.seed_policy.get_state(
+                previous=in_progress_seed
+            )
+
+          aux = {}
+          if self.keep_probability_maps:
+            aux['seg_qprob'] = self.seg_prob
+
+          np.savez_compressed(
+              fd,
+              movement_policy=_as_object_array(
+                  self.movement_policy.get_state()
+              ),
+              segmentation=self.segmentation,
+              seed=self.seed,
+              origins=self.origins,  # pyrefly: ignore[bad-argument-type]
+              overlaps=self.overlaps,  # pyrefly: ignore[bad-argument-type]
+              min_pos=self._min_pos,
+              max_pos=self._max_pos,
+              max_id=int(self._max_id),
+              history=np.array(self.history),
+              history_deleted=np.array(self.history_deleted),
+              seed_policy_state=_as_object_array(seed_policy_state),
+              counters=self.counters.dumps(),
+              partial_segment_iters=int(partial_segment_iters),
+              hosts=self._hosts,
+              **aux,
           )
-
-        aux = {}
-        if self.keep_probability_maps:
-          aux['seg_qprob'] = self.seg_prob
-
-        np.savez_compressed(
-            fd,
-            movement_policy=np.asarray(
-                self.movement_policy.get_state(), dtype=object
-            ),
-            segmentation=self.segmentation,
-            seed=self.seed,
-            origins=self.origins,  # pyrefly: ignore[bad-argument-type]
-            overlaps=self.overlaps,  # pyrefly: ignore[bad-argument-type]
-            min_pos=self._min_pos,
-            max_pos=self._max_pos,
-            history=np.array(self.history),
-            history_deleted=np.array(self.history_deleted),
-            seed_policy_state=np.asarray(seed_policy_state, dtype=object),
-            counters=self.counters.dumps(),
-            partial_segment_iters=partial_segment_iters,
-            hosts=self._hosts,
-            **aux,
-        )
     self.log_info('Inference checkpoint saved.')
 
-  def _maybe_save_checkpoint(self, partial_segment_iters=0):
+  def _maybe_save_checkpoint(
+      self,
+      partial_segment_iters: int = 0,
+      in_progress_seed: bool | None = None,
+  ):
     """Attempts to save a checkpoint.
 
     A checkpoint is only saved if the canvas is configured to keep checkpoints
@@ -829,6 +896,8 @@ class Canvas:
     Args:
       partial_segment_iters: if this checkpoint is for an in-flight segment,
         number of inference iterations already executed; 0 otherwise
+      in_progress_seed: whether the current seed from `seed_policy` has already
+        been consumed for an unfinished segment.
     """
     if self.checkpoint_path is None or self.checkpoint_interval_sec <= 0:
       return
@@ -838,6 +907,8 @@ class Canvas:
 
     with Canvas.io_lock:
       self.save_checkpoint(
-          self.checkpoint_path, partial_segment_iters=partial_segment_iters
+          self.checkpoint_path,
+          partial_segment_iters=partial_segment_iters,
+          in_progress_seed=in_progress_seed,
       )
     self.checkpoint_last = time.time()

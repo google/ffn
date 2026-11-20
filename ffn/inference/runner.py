@@ -515,6 +515,7 @@ class Runner:
 
     assert alignment is not None
 
+    partial_segment_iters = 0
     if gfile.exists(cpoint_path):
       partial_segment_iters = canvas.restore_checkpoint(cpoint_path)
 
@@ -528,12 +529,14 @@ class Runner:
     # keep a record of canvases executing inference. this is used to save
     # checkpoints in case termination is requested.
     self.canvases[corner] = canvas
-    canvas.segment_all(
-        seed_policy=self.get_seed_policy(corner, subvol_size),
-        partial_segment_iters=partial_segment_iters,  # pyrefly: ignore[unbound-name]
-    )
-    self.save_segmentation(canvas, alignment, seg_path, prob_path)
-    del self.canvases[corner]
+    try:
+      canvas.segment_all(
+          seed_policy=self.get_seed_policy(corner, subvol_size),
+          partial_segment_iters=partial_segment_iters,
+      )
+      self.save_segmentation(canvas, alignment, seg_path, prob_path)
+    finally:
+      self.canvases.pop(corner, None)
 
     # Attempt to remove the checkpoint file now that we no longer need it.
     try:
