@@ -1157,12 +1157,8 @@ def _get_tf_writer(writers) -> Any | None:
   # pylint:disable=protected-access
   if not hasattr(writers, '_writers'):
     return None
-  for w in writers._writers:
-    assert isinstance(w, metric_writers.AsyncWriter)
-    if isinstance(w._writer, metric_writers.SummaryWriter):
-      return w._writer
+  return ffn_train._get_tf_writer(writers._writers)
   # pylint:enable=protected-access
-  return None
 
 
 def _check_intensity_inversion(

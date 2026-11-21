@@ -353,8 +353,9 @@ def _get_tf_writer(writers) -> metric_writers.SummaryWriter | None:
   # pylint:disable=protected-access
   for writer in writers:
     assert isinstance(writer, metric_writers.AsyncWriter)
-    if isinstance(writer._writer, metric_writers.SummaryWriter):
-      return writer._writer
+    inner = writer._writer
+    if isinstance(inner, metric_writers.SummaryWriter):
+      return inner
   # pylint:enable=protected-access
 
 
